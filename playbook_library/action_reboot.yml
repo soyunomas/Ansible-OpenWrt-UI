@@ -1,0 +1,14 @@
+---
+- name: Reiniciar el dispositivo
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Enviar comando de reinicio
+      ansible.builtin.raw: sleep 2 && reboot &
+      async: 1
+      poll: 0
+
+    - name: Mensaje de confirmacion
+      ansible.builtin.debug:
+        msg: "El comando de reinicio ha sido enviado a {{ inventory_hostname }}. La conexión se perderá."

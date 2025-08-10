@@ -113,7 +113,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(`/api/status/${deviceName}`);
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.details || 'Respuesta no OK del servidor');
+                // --- INICIO DE LA MODIFICACIÓN ---
+                // Priorizamos el mensaje de error amigable que nos manda el backend.
+                const errorMessage = errorData.error || errorData.details || 'Respuesta no OK del servidor';
+                throw new Error(errorMessage);
+                // --- FIN DE LA MODIFICACIÓN ---
             }
             const data = await response.json();
             statusIcon.classList.remove('pending');
@@ -143,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function() {
             card.classList.add('status-offline');
             statusIcon.classList.remove('pending');
             statusIcon.classList.add('offline');
-            card.querySelector('.card-body').innerHTML = `<p class="text-danger">${error.message}</p>`;
+            card.querySelector('.card-body').innerHTML = `<p class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>${error.message}</p>`;
             card.querySelector('.card-footer').innerHTML = '';
         }
     };

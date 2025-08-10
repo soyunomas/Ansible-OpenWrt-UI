@@ -19,9 +19,60 @@
         echo "LOADAVG::$(uptime | awk -F'load average: ' '{print $2}' 2>/dev/null || echo 'N/A')"
         echo "MEMTOTAL_KB::$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo '0')"
         echo "MEMFREE_KB::$(awk '/MemFree/ {print $2}' /proc/meminfo 2>/dev/null || echo '0')"
-        echo "SSIDS::$(uci show wireless | awk -F'=' '/.ssid=/ {printf "%s, ",$2}' | sed 's/, $//' 2>/dev/null || echo 'N/A')"
-        echo "WIFI_CLIENTS::$( (for dev in $(iwinfo | grep ESSID | awk '{print $1}'); do iwinfo $dev assoclist; done | grep -v "No station connected" | awk '/dBm/ {printf "%s (%s %s), ", $1, $2, $3}' | sed 's/, $//') || echo 'Ninguno')"
         echo "WAN_IP::$( (IFACE=$(uci get network.wan.ifname 2>/dev/null); ifconfig $IFACE | awk -F'[: ]+' '/inet addr/ {print $4}') 2>/dev/null || echo 'N/A')"
         echo "DISKUSAGE::$(df -h / | tail -n 1 | awk '{print $4 " libres de " $2 " (" $5 " usados)"}' 2>/dev/null || echo 'N/A')"
         echo "DMESG::$(dmesg | tail -n 15 | tr '\n' '|' 2>/dev/null || echo 'N/A')"
+        
+        # --- INICIO DE LA LÓGICA DE RADIOS REFORZADA (v6) ---
+        radio_index=0
+        for radio_section in $(uci show wireless | grep "=wifi-device" | cut -d. -f2 | cut -d= -f1); do
+          
+          radio_dev=$radio_section
+
+          hwmode=$(uci get wireless.$radio_dev.hwmode 2>/dev/null)
+          htmode=$(uci get wireless.$radio_dev.htmode 2>/dev/null)
+
+          wifi_gen="Legacy"
+          if echo "$htmode" | grep -q "EHT"; then wifi_gen="Wi-Fi 7 (802.11be)";
+          elif echo "$htmode" | grep -q "HE"; then wifi_gen="Wi-Fi 6 (802.11ax)";
+          elif echo "$htmode" | grep -q "VHT"; then wifi_gen="Wi-Fi 5 (802.11ac)";
+          elif echo "$htmode" | grep -q "HT"; then wifi_gen="Wi-Fi 4 (802.11n)";
+          elif echo "$hwmode" | grep -q "11g"; then wifi_gen="Wi-Fi 3 (802.11g)";
+          elif echo "$hwmode" | grep -q "11a"; then wifi_gen="Wi-Fi 2 (802.11a)";
+          fi
+          
+          iface_section=$(uci show wireless | grep ".device='$radio_dev'" | grep 'wifi-iface' | cut -d. -f2 | cut -d= -f1 | head -n 1)
+          
+          ssid="N/A"
+          if [ -n "$iface_section" ]; then
+            ssid=$(uci get wireless.$iface_section.ssid 2>/dev/null || echo "N/A")
+          else
+            ssid=$(uci get wireless.@wifi-iface[$radio_index].ssid 2>/dev/null || echo "N/A")
+          fi
+          if [ "$ssid" = "N/A" ]; then ssid="N/A (Desactivado)"; fi
+
+          # --- Lógica de detección de cifrados REFORZADA ---
+          supported_ciphers_str=""
+          # Solo ejecutar 'iw' si el comando existe
+          if command -v iw > /dev/null; then
+            iw_output=$(iw phy $radio_dev info 2>/dev/null)
+            if echo "$iw_output" | grep -q "SAE"; then supported_ciphers_str="${supported_ciphers_str}WPA3,"; fi
+            if echo "$iw_output" | grep -q "WPA"; then supported_ciphers_str="${supported_ciphers_str}WPA2,WPA,"; fi
+            if echo "$iw_output" | grep -q "WEP"; then supported_ciphers_str="${supported_ciphers_str}WEP,"; fi
+          fi
+          # Añadir siempre la opción Abierta
+          supported_ciphers_str="${supported_ciphers_str}OPEN"
+          # Limpiar la coma final si existe
+          supported_ciphers=$(echo "$supported_ciphers_str" | sed 's/,$//')
+
+          # ### GARANTÍA DE FORMATO ###
+          # Si por cualquier razón la cadena de cifrados está vacía, le damos un valor por defecto.
+          if [ -z "$supported_ciphers" ]; then
+            supported_ciphers="WPA2,WPA,OPEN" # Un valor por defecto seguro y común
+          fi
+          
+          echo "RADIO_INFO::${radio_dev}|${wifi_gen}|${ssid}|${supported_ciphers}"
+          radio_index=$((radio_index+1))
+        done
+        # --- FIN DE LA LÓGICA REFORZADA ---
       changed_when: false

@@ -21,7 +21,8 @@ def get_library_playbooks():
     playbooks = []
     for extension in ('*.yml', '*.yaml'):
         found_files = glob.glob(os.path.join(LIBRARY_FOLDER, extension))
-        playbooks.extend([f for f in found_files if not os.path.basename(f).startswith('A_')])
+        # Excluir playbooks de sistema (A_) y de acciones (action_)
+        playbooks.extend([f for f in found_files if not os.path.basename(f).startswith('A_') and not os.path.basename(f).startswith('action_')])
     return sorted([os.path.basename(p) for p in playbooks])
 
 def parse_inventory():
@@ -53,6 +54,11 @@ def index_redirect():
 def devices_view():
     return render_template('devices.html')
 
+@app.route('/actions')
+def actions_view():
+    routers = parse_inventory()
+    return render_template('actions.html', routers=routers)
+
 @app.route('/execute', methods=['GET'])
 def execute_view():
     routers = parse_inventory()
@@ -63,16 +69,13 @@ def execute_view():
 
 @app.route('/api/devices')
 def api_get_devices():
-    print("--- API CALL: /api/devices ---")
     devices = parse_inventory()
-    print(f"Devolviendo: {devices}")
     return jsonify(devices)
 
 @app.route('/api/status/<device_name>')
 def api_get_device_status(device_name):
-    print(f"--- API CALL (FINAL PARSER): /api/status/{device_name} ---")
     playbook_path = os.path.join(LIBRARY_FOLDER, 'A_get_device_details.yml')
-    details = {}
+    details = {'radios': []}
     result = None
     ansible_env = get_ansible_env()
 
@@ -80,126 +83,133 @@ def api_get_device_status(device_name):
         command = ['ansible-playbook', '-v', '--limit', device_name, playbook_path]
         result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=30, env=ansible_env)
         
-        # Lógica de parseo robusta sin Regex
         json_string = None
         for line in result.stdout.splitlines():
-            # Buscamos la línea que contiene el resultado de la tarea
             if line.strip().startswith(f"ok: [{device_name}] =>"):
-                # El JSON empieza después del '=>'
                 json_string = line.split("=>", 1)[1].strip()
-                break # Encontramos lo que buscábamos, salimos del bucle
-
-        if not json_string:
-            raise ValueError("No se encontró la línea de resultado JSON ('ok: ... =>') en la salida de Ansible.")
+                break
+        if not json_string: raise ValueError("No se encontró la línea de resultado JSON.")
 
         ansible_task_result = json.loads(json_string)
 
         if ansible_task_result.get('rc', 0) != 0 or ansible_task_result.get('stderr_lines'):
-             # Ignoramos el mensaje "Connection to ... closed." que es normal.
             if not (len(ansible_task_result['stderr_lines']) == 1 and "Connection to" in ansible_task_result['stderr_lines'][0]):
-                 error_output = ansible_task_result.get('stderr', 'La tarea raw devolvió un error.')
-                 raise ValueError(f"Error en el dispositivo: {error_output}")
+                 raise ValueError(f"Error en el dispositivo: {ansible_task_result.get('stderr', '')}")
         
         raw_output = ansible_task_result.get('stdout', '')
 
         for line in raw_output.splitlines():
             if "::" in line:
                 key, value = line.split('::', 1)
-                details[key.strip().lower()] = value.strip()
+                key = key.strip().lower()
+                value = value.strip()
+                if key == 'radio_info':
+                    # --- INICIO DE LA MODIFICACIÓN ---
+                    radio_parts = value.split('|')
+                    # Ahora esperamos 4 partes: nombre, generación, ssid y cifrados
+                    if len(radio_parts) == 4:
+                        radio_name, wifi_gen, ssid, supported_ciphers = radio_parts
+                        details['radios'].append({
+                            'name': radio_name,
+                            'index': int(re.search(r'\d+', radio_name).group()),
+                            'generation': wifi_gen,
+                            'ssid': ssid,
+                            # Convertimos la cadena de cifrados en una lista
+                            'supported_ciphers': supported_ciphers.split(',')
+                        })
+                    # --- FIN DE LA MODIFICACIÓN ---
+                else:
+                    details[key] = value
+
+        if details.get('wan_ip'): details['wan_ip'] = details['wan_ip'].splitlines()[0]
+        if not details.get('ip') or details.get('ip') == 'N/A': raise ValueError("El dispositivo no devolvió una IP válida.")
         
-        # Limpieza de datos extraños (ej: WAN_IP con múltiples líneas)
-        if details.get('wan_ip'):
-            details['wan_ip'] = details['wan_ip'].splitlines()[0]
-
-        if not details.get('ip') or details.get('ip') == 'N/A':
-             raise ValueError("El dispositivo no devolvió una IP válida.")
-
-        if details.get('memtotal_kb') and details['memtotal_kb'].isdigit():
-            kb = int(details['memtotal_kb'])
-            details['mem_total'] = f"{round(kb / 1024)} MB"
-        else: details['mem_total'] = 'N/A'
-
-        if details.get('memfree_kb') and details['memfree_kb'].isdigit():
-            kb = int(details['memfree_kb'])
-            details['mem_free'] = f"{round(kb / 1024)} MB"
-        else: details['mem_free'] = 'N/A'
+        if details.get('memtotal_kb') and details['memtotal_kb'].isdigit(): details['mem_total'] = f"{round(int(details['memtotal_kb']) / 1024)} MB"
+        if details.get('memfree_kb') and details['memfree_kb'].isdigit(): details['mem_free'] = f"{round(int(details['memfree_kb']) / 1024)} MB"
+        if details.get('dmesg'): details['dmesg'] = details['dmesg'].replace('|', '\n')
         
-        if details.get('dmesg'):
-            details['dmesg'] = details['dmesg'].replace('|', '\n')
-
         details['status'] = 'online'
-        print(f"¡¡¡VICTORIA!!! DATOS PARSEADOS CORRECTAMENTE para {device_name}")
         return jsonify(details)
 
-    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
-        print(f"ERROR FINAL PROCESANDO {device_name}: {e}")
-        if result:
-            print("--- STDOUT COMPLETO ---")
-            print(result.stdout)
-            print("--- STDERR COMPLETO ---")
-            print(result.stderr)
-            print("--- FIN DE LA SALIDA ---")
-        return jsonify({'status': 'offline', 'error': 'Los datos recibidos no son válidos o el host falló.', 'details': str(e)}), 500
+    except subprocess.CalledProcessError as e:
+        error_message = 'El host no responde o la ejecución falló.'
+        if e.returncode == 4: error_message = "Fallo de autenticación. Revisa la contraseña en el archivo `hosts`."
+        return jsonify({'status': 'offline', 'error': error_message, 'details': str(e)}), 500
+    except (ValueError, json.JSONDecodeError, AttributeError) as e:
+        return jsonify({'status': 'offline', 'error': 'Los datos recibidos del host no son válidos.', 'details': str(e)}), 500
     except subprocess.TimeoutExpired:
-        print(f"Timeout contactando a {device_name}")
-        return jsonify({'status': 'offline', 'error': 'Timeout al contactar el dispositivo.'}), 500
+        return jsonify({'status': 'offline', 'error': 'Timeout: El dispositivo no respondió a tiempo.'}), 500
     except Exception as e:
-        print(f"Error inesperado en {device_name}: {e}")
-        return jsonify({'status': 'offline', 'error': 'Error general del servidor.'}), 500
+        return jsonify({'status': 'offline', 'error': 'Ha ocurrido un error general en el servidor.'}), 500
 
-@app.route('/execute', methods=['POST'])
-def execute_playbook():
-    routers, library_playbooks = parse_inventory(), get_library_playbooks()
-    target = request.form.get('target')
-    submit_action = request.form.get('submit_action')
-    output, error = "", ""
+@app.route('/api/wifi_details/<device_name>/<int:radio_index>', methods=['GET'])
+def get_wifi_details(device_name, radio_index):
+    playbook_path = os.path.join(LIBRARY_FOLDER, 'action_get_wifi_password.yml')
+    extra_vars = {'radio_index': radio_index}
+    
+    stdout, stderr = run_ansible_playbook(playbook_path, device_name, extra_vars)
+    if stderr and "fatal" in stderr.lower():
+        return jsonify({'error': 'No se pudieron obtener los detalles de WiFi.', 'details': stderr}), 500
+    
+    details = {}
+    for line in stdout.splitlines():
+        if "KEY::" in line:
+            details['password'] = line.split("::", 1)[1].strip()
+        if "ENCRYPTION::" in line:
+            details['encryption'] = line.split("::", 1)[1].strip()
 
-    if not target:
-        error = "Debe seleccionar un objetivo."
-        return render_template('execute.html', routers=routers, library_playbooks=library_playbooks, output=output, error=error)
+    return jsonify(details)
 
-    playbook_path = None
-    if submit_action == 'upload':
-        if 'playbook_file' not in request.files or not request.files['playbook_file'].filename:
-            error = "Debe seleccionar un archivo para subir."
-        else:
-            file = request.files['playbook_file']
-            if allowed_file(file.filename):
-                filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
-                playbook_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(playbook_path)
-            else:
-                error = "Tipo de archivo no permitido."
-    elif submit_action == 'library':
-        playbook_name = request.form.get('playbook_name')
-        if playbook_name and playbook_name in get_library_playbooks():
-            playbook_path = os.path.join(LIBRARY_FOLDER, playbook_name)
-        else:
-            error = "Debe seleccionar un playbook válido de la librería."
-    else:
-        error = "Acción no reconocida."
-
-    if playbook_path and not error:
-        output, error = run_ansible_playbook(playbook_path, target)
-        if submit_action == 'upload' and os.path.exists(playbook_path):
-            os.remove(playbook_path)
-
-    return render_template('execute.html', routers=routers, library_playbooks=library_playbooks, output=output, error=error)
-
-def run_ansible_playbook(playbook_path, target_host):
+def run_ansible_playbook(playbook_path, target_host, extra_vars=None):
     try:
         ansible_env = get_ansible_env()
         command = ['ansible-playbook', '-v', '--limit', target_host, playbook_path]
-        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=90, env=ansible_env)
-        return result.stdout, None
+        if extra_vars:
+            command.extend(['--extra-vars', json.dumps(extra_vars)])
+        
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=120, env=ansible_env)
+        return result.stdout, result.stderr
     except subprocess.CalledProcessError as e:
         return e.stdout, e.stderr
     except subprocess.TimeoutExpired:
-        return "", "Timeout: La ejecución del playbook tardó más de 90 segundos."
+        return "", "Timeout: La ejecución tardó más de 120 segundos."
     except FileNotFoundError:
-        return "", "Error: El comando 'ansible-playbook' no se encuentra."
+        return "", "Error: 'ansible-playbook' no se encuentra."
     except Exception as e:
         return "", f"Ocurrió un error inesperado: {str(e)}"
+
+@app.route('/api/execute_batch_action', methods=['POST'])
+def execute_batch_action():
+    data = request.json
+    targets = data.get('targets')
+    action = data.get('action')
+    params = data.get('params', {})
+
+    if not targets or not action:
+        return jsonify({'error': 'Faltan los objetivos o la acción.'}), 400
+
+    playbook_map = {
+        'reboot': 'action_reboot.yml',
+        'set_ipv4': 'action_set_ipv4.yml',
+        'set_wifi': 'action_set_wifi.yml',
+        'set_root_password': 'action_set_root_password.yml',
+        'restart_network': '02_reiniciar_red.yml',
+        'restart_wifi': '06_reiniciar_wifi.yml'
+    }
+
+    playbook_name = playbook_map.get(action)
+    if not playbook_name:
+        return jsonify({'error': 'Acción no válida.'}), 400
+
+    playbook_path = os.path.join(LIBRARY_FOLDER, playbook_name)
+    target_string = ",".join(targets)
+
+    stdout, stderr = run_ansible_playbook(playbook_path, target_string, params)
+    
+    return jsonify({
+        'output': stdout,
+        'error': stderr
+    })
 
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):

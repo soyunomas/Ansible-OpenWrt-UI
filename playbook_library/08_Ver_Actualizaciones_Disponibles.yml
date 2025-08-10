@@ -1,0 +1,15 @@
+---
+- name: Actualizar la Lista de Paquetes (opkg update)
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Ejecutar el comando 'opkg update'
+      ansible.builtin.raw: opkg update
+      register: opkg_update_output
+      
+    - name: Mostrar el resultado de la actualizacion
+      ansible.builtin.debug:
+        msg: |
+          Resultado de 'opkg update':
+          {{ opkg_update_output.stdout }}

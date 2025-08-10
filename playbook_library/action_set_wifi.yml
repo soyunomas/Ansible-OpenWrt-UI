@@ -1,0 +1,27 @@
+---
+- name: Configurar multiples interfaces WiFi
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Aplicar configuracion a cada radio especificada
+      ansible.builtin.raw: |
+        uci set wireless.@wifi-iface[{{ item.index }}].ssid='{{ item.ssid }}'
+        uci set wireless.@wifi-iface[{{ item.index }}].encryption='{{ item.encryption }}'
+        
+        # Solo establecer la clave si no es una red abierta
+        if [ "{{ item.encryption }}" != "none" ]; then
+          uci set wireless.@wifi-iface[{{ item.index }}].key='{{ item.password }}'
+        else
+          # Si el cifrado es 'none', eliminamos la clave por si existia antes
+          uci delete wireless.@wifi-iface[{{ item.index }}].key
+        fi
+      loop: "{{ radios }}" # 'radios' es la lista que pasamos desde Flask
+      loop_control:
+        label: "Configurando radio{{ item.index }}"
+
+    - name: Guardar todos los cambios de WiFi
+      ansible.builtin.raw: uci commit wireless
+
+    - name: Recargar el servicio WiFi para aplicar todos los cambios
+      ansible.builtin.raw: wifi reload

@@ -36,6 +36,11 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{{ url_for('actions_view') }}" class="nav-link {% if request.endpoint == 'actions_view' %}active{% endif %}">
+                        <i class="bi bi-lightning-charge-fill"></i>Acciones en Lote
+                    </a>
+                </li>
+                <li>
                     <a href="{{ url_for('execute_view') }}" class="nav-link {% if request.endpoint == 'execute_view' %}active{% endif %}">
                         <i class="bi bi-play-circle-fill"></i>Ejecutar Playbook
                     </a>
