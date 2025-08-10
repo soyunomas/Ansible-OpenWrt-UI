@@ -1,0 +1,23 @@
+---
+- name: Realizar la Actualizacion Completa del Sistema (opkg upgrade)
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Paso 1 - Asegurar que la lista de paquetes este actualizada
+      ansible.builtin.raw: opkg update
+      register: update_result
+      changed_when: false
+
+    - name: Paso 2 - Actualizar todos los paquetes (puede tardar varios minutos)
+      ansible.builtin.raw: opkg list-upgradable | cut -d ' ' -f 1 | xargs opkg upgrade
+      register: upgrade_result
+      # Esta tarea SÍ realiza cambios, por eso no ponemos changed_when: false
+
+    - name: Mostrar el resultado de la actualizacion
+      ansible.builtin.debug:
+        msg: |
+          ================================================================
+           RESULTADO DE LA ACTUALIZACION DEL SISTEMA
+          ================================================================
+          {{ upgrade_result.stdout }}

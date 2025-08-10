@@ -1,0 +1,27 @@
+---
+- name: Get Single Device Details (RAW)
+  hosts: all
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: /bin/true
+  tasks:
+    - name: Execute script to gather device details
+      ansible.builtin.raw: |
+        echo "IP::$(ip route get 8.8.8.8 | awk '/src/ {print $7}' 2>/dev/null || echo 'N/A')"
+        echo "GATEWAY::$(ip route | awk '/default/ {print $3}' 2>/dev/null || echo 'N/A')"
+        echo "HOSTNAME::$(uname -n 2>/dev/null || echo 'N/A')"
+        echo "MODEL::$(cat /tmp/sysinfo/model 2>/dev/null || echo 'N/A')"
+        echo "ARCHITECTURE::$(uname -m 2>/dev/null || echo 'N/A')"
+        echo "FIRMWARE::$(grep OPENWRT_RELEASE /etc/os-release | awk 'BEGIN{FS="\""} {print $2}' 2>/dev/null || echo 'N/A')"
+        echo "KERNEL_VERSION::$(uname -r 2>/dev/null || echo 'N/A')"
+        echo "LOCAL_TIME::$(date)"
+        echo "UPTIME::$(uptime | sed 's/.*up \([^,]*\), .*/\1/' 2>/dev/null || echo 'N/A')"
+        echo "LOADAVG::$(uptime | awk -F'load average: ' '{print $2}' 2>/dev/null || echo 'N/A')"
+        echo "MEMTOTAL_KB::$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo '0')"
+        echo "MEMFREE_KB::$(awk '/MemFree/ {print $2}' /proc/meminfo 2>/dev/null || echo '0')"
+        echo "SSIDS::$(uci show wireless | awk -F'=' '/.ssid=/ {printf "%s, ",$2}' | sed 's/, $//' 2>/dev/null || echo 'N/A')"
+        echo "WIFI_CLIENTS::$( (for dev in $(iwinfo | grep ESSID | awk '{print $1}'); do iwinfo $dev assoclist; done | grep -v "No station connected" | awk '/dBm/ {printf "%s (%s %s), ", $1, $2, $3}' | sed 's/, $//') || echo 'Ninguno')"
+        echo "WAN_IP::$( (IFACE=$(uci get network.wan.ifname 2>/dev/null); ifconfig $IFACE | awk -F'[: ]+' '/inet addr/ {print $4}') 2>/dev/null || echo 'N/A')"
+        echo "DISKUSAGE::$(df -h / | tail -n 1 | awk '{print $4 " libres de " $2 " (" $5 " usados)"}' 2>/dev/null || echo 'N/A')"
+        echo "DMESG::$(dmesg | tail -n 15 | tr '\n' '|' 2>/dev/null || echo 'N/A')"
+      changed_when: false

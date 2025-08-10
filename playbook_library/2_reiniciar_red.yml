@@ -1,0 +1,13 @@
+---
+- name: Reiniciar el servicio de red en OpenWrt
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Ejecutar el comando para reiniciar la red
+      ansible.builtin.raw: /etc/init.d/network restart
+      register: restart_output
+
+    - name: Mostrar resultado del reinicio
+      ansible.builtin.debug:
+        msg: "Comando de reinicio enviado. Salida: {{ restart_output.stdout }}"

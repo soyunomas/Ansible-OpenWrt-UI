@@ -1,0 +1,6 @@
+[routers]
+router_habit ansible_host=192.168.20.70 ansible_user=root ansible_ssh_pass=xxxxxxx
+router_despacho ansible_host=192.168.20.12 ansible_user=root ansible_ssh_pass=yyyyyyyy
+router_negro ansible_host=192.168.20.11 ansible_user=root ansible_ssh_pass=yyyyyyyy
+router_principal ansible_host=192.168.20.1 ansible_user=root ansible_ssh_pass=yyyyyyyy
+

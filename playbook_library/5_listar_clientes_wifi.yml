@@ -1,0 +1,18 @@
+---
+- name: Listar Clientes WiFi Conectados
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Usar el comando 'iwinfo' para obtener la lista de estaciones asociadas
+      # Este comando itera sobre todas las radios (radio0, radio1, etc) y pide la lista
+      # de estaciones conectadas a cada una.
+      ansible.builtin.raw: for dev in $(iwinfo | grep ESSID | awk '{print $1}'); do iwinfo $dev assoclist; done
+      register: wifi_clients
+      changed_when: false
+
+    - name: Mostrar la lista de clientes
+      ansible.builtin.debug:
+        msg: |
+          Dispositivos Conectados:
+          {{ wifi_clients.stdout }}

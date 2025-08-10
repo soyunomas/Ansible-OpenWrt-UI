@@ -1,0 +1,12 @@
+---
+- name: Get Memory Free
+  hosts: all
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: /bin/true
+  tasks:
+    - name: Get Memory Free
+      ansible.builtin.raw: |
+        echo "$(grep MemFree /proc/meminfo | awk '{print $2}' 2>/dev/null || echo "0")"
+      register: result
+      changed_when: false
