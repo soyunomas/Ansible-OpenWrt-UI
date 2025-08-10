@@ -18,6 +18,34 @@ Panel de control web para gestionar y automatizar routers OpenWrt a través de p
 *   **Backend:** Python 3, Flask
 *   **Automatización:** Ansible
 *   **Frontend:** HTML, CSS, JavaScript, Bootstrap 5
+  
+## 🧠 Filosofía de Diseño: Mínima Huella en el Router
+
+Este panel está diseñado con una premisa fundamental: **no modificar el sistema base de OpenWrt**. Los routers suelen tener un espacio de almacenamiento muy limitado, por lo que instalar un intérprete de Python y las librerías necesarias para que los módulos estándar de Ansible funcionen no es una opción viable ni deseable.
+
+Para lograrlo, toda la comunicación y ejecución de tareas se basa en una estrategia que aprovecha al máximo lo que un sistema OpenWrt ya tiene por defecto: un servidor SSH y un conjunto de herramientas de línea de comandos (como `awk`, `grep`, `sed`, `uci`, etc.).
+
+Esto se consigue aplicando los siguientes principios en todos los playbooks:
+
+1.  **Desactivación de la Recolección de Hechos:** En cada playbook, se especifica `gather_facts: false`. Este paso es crucial, ya que la recolección de hechos (`facts`) es el proceso por el cual Ansible intenta ejecutar un script de Python en el nodo remoto para obtener información del sistema. Al desactivarlo, evitamos el primer requisito de Python.
+
+2.  **Uso Exclusivo del Módulo `ansible.builtin.raw`:** En lugar de módulos como `ansible.builtin.command` o `ansible.builtin.shell` (que también tienen ciertas dependencias), utilizamos `raw`. Este módulo hace lo mínimo indispensable: abre una conexión SSH y ejecuta el comando que le pasamos, devolviendo la salida en crudo. Es la forma más pura de ejecutar un comando remoto, compatible con cualquier dispositivo que tenga un servidor SSH.
+
+3.  **Formato de Salida predecible:** Como se puede ver en el playbook `A_get_device_details.yml`, la lógica no reside en Ansible, sino en el propio comando shell que se ejecuta. Los datos se formatean con un separador simple (ej: `HOSTNAME::router-principal`) para que la aplicación Flask pueda parsear la salida de texto fácilmente sin depender de formatos complejos como JSON, que serían más difíciles de generar con comandos de shell básicos.
+
+#### Ventajas de este enfoque:
+
+*   **Zero-Dependency en el Router:** No necesitas instalar `python`, `scp`, `sftp` ni ningún otro paquete en tus dispositivos OpenWrt. Funciona con una instalación por defecto.
+*   **Universalidad:** Es compatible con casi cualquier versión de OpenWrt y otros sistemas embebidos que solo ofrezcan acceso SSH.
+*   **Ligereza:** El impacto en el rendimiento y almacenamiento del router es prácticamente nulo.
+*   **Seguridad:** No se añaden nuevos servicios ni intérpretes al router, reduciendo la superficie de ataque.
+
+#### Limitaciones a tener en cuenta:
+
+*   **Idempotencia Manual:** El módulo `raw` no es idempotente por naturaleza. A diferencia de los módulos de Ansible (ej: `user`, `copy`), que comprueban el estado antes de realizar una acción, un comando `raw` se ejecutará siempre. La lógica para comprobar si un cambio es necesario debe ser implementada manualmente en el script del propio playbook.
+*   **Complejidad en los Playbooks:** Tareas complejas requieren scripts de shell más elaborados, que pueden ser más difíciles de escribir y depurar que un playbook de Ansible estándar.
+*   **Fragilidad del "Parseo":** La interfaz gráfica depende de que los comandos devuelvan la información en el formato esperado. Un cambio en la salida de un comando en una futura versión de OpenWrt podría romper la visualización de ese dato hasta que se adapte el playbook.
+
 
 ## 🚀 Instalación y Configuración
 
