@@ -1,0 +1,2 @@
+# Contenido para el archivo requirements.txt
+Flask
