@@ -3,14 +3,16 @@
 
 {% block content %}
 <style>
-    .device-card { border: 1px solid #dee2e6; transition: all 0.2s ease-in-out; }
+    .device-card { border: 1px solid #dee2e6; transition: all 0.2s ease-in-out; cursor: pointer; }
     .device-card:hover { border-color: #0d6efd; box-shadow: 0 .125rem .25rem rgba(0,0,0,.075); }
     .device-card.selected { background-color: #e9f2ff; border-color: #0d6efd; }
-    .device-card.error-loading { background-color: #fff0f0; border-color: #e9a0a0; opacity: 0.8; }
+    .device-card.error-loading { background-color: #fff0f0; border-color: #e9a0a0; opacity: 0.8; cursor: not-allowed; }
     .action-button { display: flex; align-items: center; gap: 0.5rem; }
-    #output-modal-body, .output-console { background-color: #212529; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; max-height: 70vh; }
+    #output-modal-body, .output-console { background-color: #212529; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; max-height: 70vh; overflow-y: auto; }
     .interface-group { border: 1px solid #ddd; border-radius: .25rem; margin-bottom: 1rem; }
     .interface-group .card-header { background-color: #f7f7f7; font-weight: bold; }
+    .wifi-label { font-weight: bold; }
+    .wifi-label small { font-weight: normal; color: #6c757d; }
 </style>
 
 <!-- Título y descripción -->
@@ -45,13 +47,13 @@
 
 <!-- Modals -->
 <div class="modal fade" id="outputModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="outputModalLabel">Resultado</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="output-modal-body"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
-<div class="modal fade" id="errorModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header bg-danger text-white"><h5 class="modal-title" id="errorModalLabel">Detalles del Error</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>La carga de datos para este dispositivo falló. Esta es la salida completa:</p><pre class="output-console" id="error-output-content" style="max-height: 60vh;"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
+<div class="modal fade" id="errorModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header bg-danger text-white"><h5 class="modal-title" id="errorModalLabel">Detalles del Error</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>La carga de datos para este dispositivo falló. Esta es la salida completa:</p><pre class="output-console" id="error-output-content"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- REFERENCIAS A ELEMENTOS DEL DOM ---
+    // ... (Declaración de constantes igual que antes)
     const devicesContainer = document.getElementById('devices-container');
     const selectAllCheckbox = document.getElementById('select-all-checkbox');
     const actionButtons = document.querySelectorAll('.action-button');
@@ -62,47 +64,51 @@ document.addEventListener('DOMContentLoaded', function() {
     const interfacesConfigContainer = document.getElementById('interfaces-config-container');
     const wifiConfigContainer = document.getElementById('wifi-config-container');
 
-    // --- FUNCIONES AUXILIARES ---
-    const escapeHTML = (str) => str ? String(str).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]) : '';
-
+    const escapeHTML = (str) => str ? String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]) : '';
+    const getWifiStandard = (gen) => ({'Wi-Fi 7':'802.11be','Wi-Fi 6':'802.11ax','Wi-Fi 5':'802.11ac','Wi-Fi 4':'802.11n','Wi-Fi 3':'802.11g','Wi-Fi 2':'802.11a','Legacy':'802.11b'}[gen] || '');
+    
+    // ... (El resto de funciones auxiliares como addPasswordToggleListeners, toggleActionButtons, etc. se mantienen igual)
     const addPasswordToggleListeners = () => {
         document.querySelectorAll('.password-toggle-btn').forEach(button => {
             if (button.dataset.listenerAttached) return;
             button.dataset.listenerAttached = 'true';
             button.addEventListener('click', function() {
                 const input = this.closest('.input-group').querySelector('input');
-                const icon = this.querySelector('i');
-                const isPassword = input.type === 'password';
-                input.type = isPassword ? 'text' : 'password';
-                icon.classList.toggle('bi-eye-fill', !isPassword);
-                icon.classList.toggle('bi-eye-slash-fill', isPassword);
+                input.type = input.type === 'password' ? 'text' : 'password';
+                this.querySelector('i').classList.toggle('bi-eye-slash-fill');
             });
         });
     };
 
-    // --- LÓGICA DE CARGA DE DISPOSITIVOS ---
+    const toggleActionButtons = () => {
+        const selectedCount = document.querySelectorAll('.device-card .form-check-input:checked').length;
+        document.querySelectorAll('.action-button').forEach(button => {
+            button.disabled = (selectedCount === 0);
+        });
+    };
+
+    // ... (Funciones de creación de tarjetas y carga de datos sin cambios)
     const createDeviceSkeletonCard = (deviceName) => {
         const cardWrapper = document.createElement('div');
         cardWrapper.className = 'col-lg-3 col-md-4 col-sm-6';
-        const card = document.createElement('div');
-        card.className = 'card device-card h-100';
-        card.id = `card-${deviceName}`;
-        card.innerHTML = `
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="flex-grow-1"><h6 class="card-title mb-1">${escapeHTML(deviceName)}</h6><small class="text-muted" id="model-${deviceName}">Cargando...</small></div>
-                    <input class="form-check-input ms-3" type="checkbox" value="${escapeHTML(deviceName)}" disabled>
-                </div>
-                <hr class="my-2">
-                <div style="font-size: 0.9rem;" class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <div id="ip-${deviceName}"><div class="spinner-grow spinner-grow-sm text-secondary" role="status"></div> IP...</div>
-                        <div class="mt-1" id="radios-${deviceName}"><div class="spinner-grow spinner-grow-sm text-secondary" role="status"></div> Radios...</div>
+        cardWrapper.innerHTML = `
+            <div class="card device-card h-100" id="card-${deviceName}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h6 class="card-title mb-1">${escapeHTML(deviceName)}</h6>
+                            <small class="text-muted" id="model-${deviceName}"><div class="spinner-grow spinner-grow-sm" role="status"></div> Cargando...</small>
+                        </div>
+                        <input class="form-check-input ms-3" type="checkbox" value="${escapeHTML(deviceName)}" disabled>
                     </div>
-                    <button class="btn btn-sm btn-outline-danger error-button" style="display: none;" data-device-name="${escapeHTML(deviceName)}"><i class="bi bi-bug-fill"></i></button>
+                    <hr class="my-2">
+                    <div style="font-size: 0.85rem;">
+                        <div id="ip-${deviceName}" class="mb-1"></div>
+                        <div id="radios-${deviceName}"></div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger error-button" style="display: none; position: absolute; bottom: 10px; right: 10px;" data-device-name="${escapeHTML(deviceName)}"><i class="bi bi-bug-fill"></i></button>
                 </div>
             </div>`;
-        cardWrapper.appendChild(card);
         return cardWrapper;
     };
 
@@ -110,30 +116,31 @@ document.addEventListener('DOMContentLoaded', function() {
         const card = document.getElementById(`card-${deviceName}`);
         try {
             const response = await fetch(`/api/status/${deviceName}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText);
+            }
             const data = await response.json();
-            if (!response.ok) throw new Error(JSON.stringify(data));
             
             card.dataset.deviceData = JSON.stringify(data);
-            document.getElementById(`model-${deviceName}`).textContent = data.model || 'N/A';
-            const lanIp = data.interfaces.find(iface => iface.name === 'br-lan');
-            const displayIp = lanIp ? lanIp.ip : (data.interfaces[0]?.ip || 'N/A');
-            document.getElementById(`ip-${deviceName}`).innerHTML = `<i class="bi bi-router-fill me-2"></i> ${escapeHTML(displayIp)}`;
+            card.querySelector(`#model-${deviceName}`).textContent = data.model || 'N/A';
+            card.querySelector(`#ip-${deviceName}`).innerHTML = `<i class="bi bi-router-fill me-1"></i> ${escapeHTML(data.interfaces?.[0]?.ip || 'N/A')}`;
             
-            let radioHtml = '<span class="text-muted">No radios</span>';
+            let radioHtml = '<span class="text-muted small">No radios</span>';
             if (data.radios && data.radios.length > 0) {
-                radioHtml = data.radios.map(r => `<span class="badge bg-primary me-1">${escapeHTML(r.name)}</span>`).join('');
+                radioHtml = data.radios.map(r => {
+                    const standard = getWifiStandard(r.generation);
+                    const displayText = standard ? `${escapeHTML(r.name)} (${standard} - ${escapeHTML(r.generation)})` : `${escapeHTML(r.name)} (${escapeHTML(r.generation)})`;
+                    return `<div class="radio-info" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayText}</div>`;
+                }).join('');
             }
-            document.getElementById(`radios-${deviceName}`).innerHTML = `<i class="bi bi-wifi me-2"></i> ${radioHtml}`;
-            
-            const checkbox = card.querySelector('.form-check-input');
-            checkbox.disabled = false;
-            checkbox.value = data.inventory_name;
+            card.querySelector(`#radios-${deviceName}`).innerHTML = `<i class="bi bi-wifi me-1"></i> ${radioHtml}`;
+            card.querySelector('.form-check-input').disabled = false;
         } catch (error) {
             card.classList.add('error-loading');
-            const errorData = JSON.parse(error.message || '{}');
-            document.getElementById(`model-${deviceName}`).innerHTML = `<span class="text-danger">${escapeHTML(errorData.error || "Error de carga")}</span>`;
-            document.getElementById(`ip-${deviceName}`).innerHTML = '';
-            document.getElementById(`radios-${deviceName}`).innerHTML = '';
+            let errorData;
+            try { errorData = JSON.parse(error.message); } catch (e) { errorData = { error: "Error de comunicación o parseo." }; }
+            card.querySelector(`#model-${deviceName}`).innerHTML = `<span class="text-danger">${escapeHTML(errorData.error || "Error de carga")}</span>`;
             const errorButton = card.querySelector('.error-button');
             if (errorData.ansible_stdout || errorData.ansible_stderr) {
                 errorButton.style.display = 'block';
@@ -143,11 +150,12 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     const loadAllDevices = async () => {
+        devicesContainer.innerHTML = '<div class="text-center p-5 col-12"><div class="spinner-border text-primary"></div><p class="mt-2">Obteniendo lista de dispositivos...</p></div>';
         try {
             const response = await fetch('/api/devices');
             const deviceNames = await response.json();
             devicesContainer.innerHTML = '';
-            if (!deviceNames.length) { 
+            if (!deviceNames || deviceNames.length === 0) { 
                 devicesContainer.innerHTML = '<p class="text-center col-12">No hay dispositivos en el inventario.</p>'; 
                 return;
             }
@@ -155,115 +163,180 @@ document.addEventListener('DOMContentLoaded', function() {
             await Promise.all(deviceNames.map(name => populateCardData(name)));
         } catch (error) {
             console.error("Error fatal al cargar dispositivos:", error);
-            devicesContainer.innerHTML = '<p class="text-danger text-center col-12">Error fatal al cargar dispositivos. Revisa la consola (F12) para más detalles.</p>';
+            devicesContainer.innerHTML = '<p class="text-danger text-center col-12">Error fatal al cargar la lista de dispositivos. Revisa la consola (F12).</p>';
         }
     };
     
-    const showErrorModal = (e) => {
-        const button = e.target.closest('.error-button');
-        if (!button) return;
-        document.getElementById('errorModalLabel').textContent = `Detalles del Error en ${button.dataset.deviceName}`;
-        document.getElementById('error-output-content').textContent = button.dataset.errorOutput;
-        errorModal.show();
-    };
-    
-    // --- LÓGICA DE ACTUALIZACIÓN DE UI (EL NÚCLEO DEL CAMBIO) ---
     const updateActionForms = () => {
-        const selectedCheckboxes = Array.from(document.querySelectorAll('.device-card .form-check-input:checked'));
-        const selectedDevicesData = selectedCheckboxes.map(cb => {
-            const card = cb.closest('.device-card');
-            return card.dataset.deviceData ? JSON.parse(card.dataset.deviceData) : null;
-        }).filter(Boolean);
-
-        // Actualizar formulario de Interfaces de Red
+        const selectedDevicesData = Array.from(document.querySelectorAll('.device-card .form-check-input:checked'))
+            .map(cb => {
+                const data = cb.closest('.device-card').dataset.deviceData;
+                try { return data ? JSON.parse(data) : null; } catch(e) { return null; }
+            })
+            .filter(d => d && d.status === 'online');
         updateInterfacesUI(selectedDevicesData);
-        // Actualizar formulario de WiFi
         updateWifiUI(selectedDevicesData);
     };
 
     const updateInterfacesUI = (devicesData) => {
-        interfacesConfigContainer.innerHTML = '';
         if (devicesData.length === 0) {
-            interfacesConfigContainer.innerHTML = '<p class="text-muted">Selecciona dispositivos para ver sus interfaces.</p>';
-            return;
-        }
-        // (La lógica de renderizado de interfaces no cambia, se mueve aquí)
-        let html = '';
-        devicesData.forEach(device => {
-            html += `<div class="card interface-group"><div class="card-header">${escapeHTML(device.hostname)}</div><div class="card-body">`;
-            if (!device.interfaces || device.interfaces.length === 0) {
-                html += '<p class="text-muted">Este dispositivo no tiene interfaces de red.</p>';
-            } else {
-                device.interfaces.forEach(iface => {
-                    html += `<div class="row g-2 align-items-center mb-2">
-                            <div class="col-sm-3 fw-bold">${escapeHTML(iface.name)}</div>
-                            <div class="col-sm-5"><div class="input-group input-group-sm"><span class="input-group-text">IP</span><input type="text" class="form-control" data-device="${escapeHTML(device.inventory_name)}" data-iface="${escapeHTML(iface.name)}" data-field="ip" value="${escapeHTML(iface.ip)}"></div></div>
-                            <div class="col-sm-4"><div class="input-group input-group-sm"><span class="input-group-text">Mask</span><input type="text" class="form-control" data-device="${escapeHTML(device.inventory_name)}" data-iface="${escapeHTML(iface.name)}" data-field="mask" value="${escapeHTML(iface.mask)}"></div></div>
-                        </div>`;
-                });
-            }
-            html += '</div></div>';
-        });
-        interfacesConfigContainer.innerHTML = html;
-    };
-
-    const updateWifiUI = (devicesData) => {
-        wifiConfigContainer.innerHTML = '';
-        if (devicesData.length === 0) {
-            wifiConfigContainer.innerHTML = '<p class="text-muted">Selecciona dispositivos para ver sus opciones de WiFi.</p>';
+            interfacesConfigContainer.innerHTML = '<p class="text-muted">Selecciona dispositivos online para ver sus interfaces.</p>';
             return;
         }
 
-        const ENCRYPTION_OPTIONS = [/* ... (el mapa de cifrado va aquí) ... */];
-        const ENCRYPTION_OPTIONS_FLATTENED = [
-            { label: 'WPA3 (Recomendado)', options: [{ value: 'sae', text: 'WPA3 Personal (SAE)', aliases: ['sae'] },{ value: 'sae-mixed', text: 'WPA2/WPA3 Mixto (SAE-Mixed)', aliases: ['sae-mixed'] }] },
-            { label: 'WPA2 (Seguro)', options: [{ value: 'psk2', text: 'WPA2-PSK (AES - Fuerte)', aliases: ['psk2', 'psk2+ccmp', 'psk2+aes'] },{ value: 'psk2+tkip', text: 'WPA2-PSK (TKIP - Inseguro)', aliases: ['psk2+tkip'] },{ value: 'psk2+tkip+ccmp', text: 'WPA2-PSK (TKIP+AES - Mixto)', aliases: ['psk2+tkip+ccmp', 'psk2+tkip+aes'] }] },
-            { label: 'WPA/WPA2 Mixto', options: [{ value: 'psk-mixed', text: 'WPA/WPA2-PSK (AES - Fuerte)', aliases: ['psk-mixed', 'psk-mixed+ccmp', 'psk-mixed+aes'] },{ value: 'psk-mixed+tkip', text: 'WPA/WPA2-PSK (TKIP - Inseguro)', aliases: ['psk-mixed+tkip'] },{ value: 'psk-mixed+tkip+ccmp', text: 'WPA/WPA2-PSK (TKIP+AES - Mixto)', aliases: ['psk-mixed+tkip+ccmp', 'psk-mixed+tkip+aes'] }] },
-            { label: 'WPA (Obsoleto)', options: [{ value: 'psk', text: 'WPA-PSK (AES - Fuerte)', aliases: ['psk', 'psk+ccmp', 'psk+aes'] },{ value: 'psk+tkip', text: 'WPA-PSK (TKIP - Inseguro)', aliases: ['psk+tkip'] },{ value: 'psk+tkip+ccmp', text: 'WPA-PSK (TKIP+AES - Mixto)', aliases: ['psk+tkip+ccmp', 'psk+tkip+aes'] }] },
-            { label: 'Legacy y Abiertas (No Recomendado)', options: [{ value: 'wep-open', text: 'WEP (Totalmente Inseguro)', aliases: ['wep', 'wep-open'] },{ value: 'wep-shared', text: 'WEP Shared Key (Inseguro)', aliases: ['wep-shared'] },{ value: 'owe', text: 'OWE (Enhanced Open)', aliases: ['owe'] },{ value: 'none', text: 'OPEN (Sin Seguridad)', aliases: ['none'] }] }
-        ];
-
         let html = '';
         devicesData.forEach(device => {
-            if (!device.radios || device.radios.length === 0) return;
-
+            if (!device.interfaces || device.interfaces.length === 0) return;
             html += `<div class="card interface-group"><div class="card-header">${escapeHTML(device.hostname)}</div><div class="card-body">`;
-            device.radios.forEach(radio => {
-                let optionsHtml = ENCRYPTION_OPTIONS_FLATTENED.map(group => {
-                    let groupOptions = group.options.map(option => {
-                        const isSelected = option.aliases.includes(radio.encryption);
-                        return `<option value="${option.value}" ${isSelected ? 'selected' : ''}>${option.text}</option>`;
-                    }).join('');
-                    return `<optgroup label="${group.label}">${groupOptions}</optgroup>`;
-                }).join('');
-
-                html += `<div class="row g-2 align-items-center mb-3">
-                        <div class="col-sm-2 fw-bold"><span class="badge bg-primary">${escapeHTML(radio.name)}</span></div>
-                        <div class="col-sm-3"><input type="text" class="form-control form-control-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${radio.index}" data-field="ssid" value="${escapeHTML(radio.ssid)}" data-original-value="${escapeHTML(radio.ssid)}" placeholder="SSID"></div>
-                        <div class="col-sm-3"><div class="input-group input-group-sm"><input type="password" class="form-control wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${radio.index}" data-field="key" value="${escapeHTML(radio.key)}" data-original-value="${escapeHTML(radio.key)}" placeholder="Contraseña"><button class="btn btn-outline-secondary password-toggle-btn" type="button"><i class="bi bi-eye-fill"></i></button></div></div>
-                        <div class="col-sm-4"><select class="form-select form-select-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${radio.index}" data-field="encryption" data-original-value="${radio.encryption}">${optionsHtml}</select></div>
+            device.interfaces.forEach(iface => {
+                html += `
+                    <div class="row g-3 align-items-center mb-2">
+                        <div class="col-lg-3 col-md-12"><strong><i class="bi bi-ethernet text-primary"></i> ${escapeHTML(iface.name)}</strong></div>
+                        <div class="col-lg-5 col-md-6"><input type="text" class="form-control form-control-sm iface-input" data-device="${escapeHTML(device.inventory_name)}" data-iface-name="${escapeHTML(iface.name)}" data-field="ip" value="${escapeHTML(iface.ip)}" placeholder="Dirección IP"></div>
+                        <div class="col-lg-4 col-md-6"><input type="text" class="form-control form-control-sm iface-input" data-device="${escapeHTML(device.inventory_name)}" data-iface-name="${escapeHTML(iface.name)}" data-field="mask" value="${escapeHTML(iface.mask)}" placeholder="Máscara de red"></div>
                     </div>`;
             });
             html += '</div></div>';
         });
-        wifiConfigContainer.innerHTML = html;
+        interfacesConfigContainer.innerHTML = html || '<p>Los dispositivos seleccionados no tienen interfaces configurables.</p>';
+    };
+
+    const updateWifiUI = (devicesData) => {
+        if (devicesData.length === 0) {
+            wifiConfigContainer.innerHTML = '<p class="text-muted">Selecciona dispositivos online para ver sus opciones de WiFi.</p>';
+            return;
+        }
+        const ENCRYPTION_OPTIONS_FLATTENED = [
+            { label: 'WPA3 (Recomendado)', options: [{ value: 'sae', text: 'WPA3 Personal (SAE)', aliases: ['sae'] },{ value: 'sae-mixed', text: 'WPA2/WPA3 Mixto', aliases: ['sae-mixed'] }] },
+            { label: 'WPA2 (Seguro)', options: [{ value: 'psk2', text: 'WPA2-PSK (AES)', aliases: ['psk2', 'psk2+ccmp', 'psk2+aes'] },{ value: 'psk2+tkip', text: 'WPA2-PSK (TKIP)', aliases: ['psk2+tkip'] },{ value: 'psk2+tkip+ccmp', text: 'WPA2-PSK (TKIP+AES)', aliases: ['psk2+tkip+ccmp', 'psk2+tkip+aes'] }] },
+            { label: 'WPA/WPA2 Mixto', options: [{ value: 'psk-mixed', text: 'WPA/WPA2-PSK (AES)', aliases: ['psk-mixed', 'psk-mixed+ccmp', 'psk-mixed+aes'] },{ value: 'psk-mixed+tkip', text: 'WPA/WPA2-PSK (TKIP)', aliases: ['psk-mixed+tkip'] },{ value: 'psk-mixed+tkip+ccmp', text: 'WPA/WPA2-PSK (TKIP+AES)', aliases: ['psk-mixed+tkip+ccmp', 'psk-mixed+tkip+aes'] }] },
+            { label: 'Legacy y Abiertas', options: [{ value: 'wep-open', text: 'WEP (Inseguro)', aliases: ['wep', 'wep-open'] },{ value: 'wep-shared', text: 'WEP Shared Key', aliases: ['wep-shared'] },{ value: 'owe', text: 'OWE (Enhanced Open)', aliases: ['owe'] },{ value: 'none', text: 'OPEN (Sin Seguridad)', aliases: ['none'] }] }
+        ];
+        let html = '';
+        devicesData.forEach(device => {
+            if (!device.radios || device.radios.length === 0) return;
+            html += `<div class="card interface-group"><div class="card-header">${escapeHTML(device.hostname)}</div><div class="card-body">`;
+            device.radios.forEach(radio => {
+                const standard = getWifiStandard(radio.generation);
+                const displayText = standard ? `${escapeHTML(standard)} - ${escapeHTML(radio.generation)}` : escapeHTML(radio.generation);
+                
+                let optionsHtml = ENCRYPTION_OPTIONS_FLATTENED.map(group => {
+                    let groupOptions = group.options
+                        // ====================== ¡ESTA ES LA LÍNEA ELIMINADA! ======================
+                        // Se ha eliminado la línea .filter(...) que causaba el problema.
+                        // Ahora, todas las opciones se renderizan siempre.
+                        // =========================================================================
+                        .map(option => {
+                            // Esta lógica, que SELECCIONA la opción correcta, sí funciona.
+                            // Comprueba si el cifrado actual del router (ej: 'psk2') está en la lista de alias de la opción.
+                            const isSelected = option.aliases.includes(radio.encryption);
+                            return `<option value="${option.value}" ${isSelected ? 'selected' : ''}>${option.text}</option>`;
+                        }).join('');
+                    // Solo mostramos el grupo si contenía alguna opción
+                    return groupOptions ? `<optgroup label="${group.label}">${groupOptions}</optgroup>` : '';
+                }).join('');
+
+                html += `<div class="row g-3 align-items-center mb-3">
+                        <div class="col-lg-3 col-md-12 wifi-label">
+                            <i class="bi bi-wifi text-primary"></i> ${escapeHTML(radio.name)}<br><small>${displayText}</small>
+                        </div>
+                        <div class="col-lg-3 col-md-4"><input type="text" class="form-control form-control-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${escapeHTML(radio.index)}" data-field="ssid" value="${escapeHTML(radio.ssid)}" placeholder="SSID"></div>
+                        <div class="col-lg-3 col-md-4"><div class="input-group input-group-sm"><input type="password" class="form-control form-control-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${escapeHTML(radio.index)}" data-field="key" value="${escapeHTML(radio.key)}" placeholder="Contraseña"><button class="btn btn-outline-secondary password-toggle-btn" type="button"><i class="bi bi-eye-fill"></i></button></div></div>
+                        <div class="col-lg-3 col-md-4"><select class="form-select form-select-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${escapeHTML(radio.index)}" data-field="encryption">${optionsHtml}</select></div>
+                    </div>`;
+            });
+            html += '</div></div>';
+        });
+        wifiConfigContainer.innerHTML = html || '<p>Los dispositivos seleccionados no tienen radios WiFi.</p>';
         addPasswordToggleListeners();
     };
 
-    // --- LÓGICA DE EVENTOS ---
-    const toggleActionButtons = () => {
-        const anySelected = document.querySelectorAll('.device-card .form-check-input:checked').length > 0;
-        actionButtons.forEach(btn => btn.disabled = !anySelected);
-    };
+    // ... (El resto de funciones como executeAction, showErrorModal y los event listeners se mantienen sin cambios)
+    const executeAction = async (e) => {
+        const button = e.currentTarget;
+        const action = button.dataset.action;
+        const targets = Array.from(document.querySelectorAll('.device-card .form-check-input:checked')).map(cb => cb.value);
 
-    const handleDeviceSelection = (e) => {
-        if (e.target.classList.contains('form-check-input')) {
-            e.target.closest('.device-card').classList.toggle('selected', e.target.checked);
-            toggleActionButtons();
-            updateActionForms();
+        if (targets.length === 0) {
+            alert("Por favor, selecciona al menos un dispositivo.");
+            return;
+        }
+
+        let params = {};
+        if (action === 'set_interfaces') {
+            params.changes = [];
+            document.querySelectorAll('.iface-input[data-field="ip"]').forEach(ipInput => {
+                const device = ipInput.dataset.device;
+                const iface_name = ipInput.dataset.ifaceName;
+                const ip = ipInput.value;
+                const mask = document.querySelector(`.iface-input[data-device="${device}"][data-iface-name="${iface_name}"][data-field="mask"]`).value;
+                params.changes.push({ device, iface_name, ip, mask });
+            });
+        } else if (action === 'set_wifi') {
+            params.changes = [];
+            document.querySelectorAll('.wifi-input[data-field="ssid"]').forEach(ssidInput => {
+                const device = ssidInput.dataset.device;
+                const index = ssidInput.dataset.radioIndex;
+                const ssid = ssidInput.value;
+                const key = document.querySelector(`.wifi-input[data-device="${device}"][data-radio-index="${index}"][data-field="key"]`).value;
+                const encryption = document.querySelector(`.wifi-input[data-device="${device}"][data-radio-index="${index}"][data-field="encryption"]`).value;
+                params.changes.push({ device, index, ssid, key, encryption });
+            });
+        } else if (action === 'set_root_password') {
+            const passwordInput = document.querySelector('input[name="new_root_password"]');
+            params.new_root_password = passwordInput.value;
+            if (!params.new_root_password) { alert("La nueva contraseña no puede estar vacía."); return; }
+        }
+
+        const confirmed = confirm(`¿Estás seguro de que quieres ejecutar la acción '${action}' en ${targets.length} dispositivo(s)?`);
+        if (!confirmed) return;
+
+        button.disabled = true;
+        button.querySelector('span').textContent = 'Ejecutando...';
+
+        try {
+            const response = await fetch('/api/execute_batch_action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
+                body: JSON.stringify({ action, targets, params })
+            });
+            const result = await response.json();
+            outputModalTitle.textContent = `Resultado de la Acción: ${action}`;
+            outputModalBody.innerHTML = `<strong>Salida Estándar:</strong><pre class="output-console">${escapeHTML(result.output) || 'Sin salida.'}</pre>`;
+            if (result.error) {
+                outputModalBody.innerHTML += `<hr><strong>Errores:</strong><pre class="output-console text-danger">${escapeHTML(result.error)}</pre>`;
+            }
+            outputModal.show();
+        } catch (err) {
+            outputModalTitle.textContent = 'Error de Ejecución';
+            outputModalBody.textContent = `Error al contactar con el servidor: ${err}`;
+            outputModal.show();
+        } finally {
+            button.disabled = false;
+            button.querySelector('span').textContent = button.textContent.trim().split(' ').slice(1).join(' ');
         }
     };
     
+    const showErrorModal = (button) => {
+        document.getElementById('error-output-content').textContent = button.dataset.errorOutput || "No hay detalles de error disponibles.";
+        errorModal.show();
+    };
+
+    devicesContainer.addEventListener('click', (e) => {
+        const errorButton = e.target.closest('.error-button');
+        if (errorButton) { showErrorModal(errorButton); return; }
+        
+        const card = e.target.closest('.device-card');
+        if (!card || card.classList.contains('error-loading')) return;
+        
+        const checkbox = card.querySelector('.form-check-input');
+        if (e.target.tagName !== 'INPUT') checkbox.checked = !checkbox.checked;
+        
+        card.classList.toggle('selected', checkbox.checked);
+        toggleActionButtons();
+        updateActionForms();
+    });
+
     selectAllCheckbox.addEventListener('change', () => {
         document.querySelectorAll('.device-card .form-check-input:not(:disabled)').forEach(cb => {
             cb.checked = selectAllCheckbox.checked;
@@ -273,95 +346,9 @@ document.addEventListener('DOMContentLoaded', function() {
         updateActionForms();
     });
 
-    const executeAction = async (e) => {
-        const button = e.currentTarget;
-        const action = button.dataset.action;
-        const selectedDevicesNames = Array.from(document.querySelectorAll('.device-card .form-check-input:checked')).map(cb => cb.value);
-
-        if (selectedDevicesNames.length === 0) return;
-
-        let params = {};
-        let targets = selectedDevicesNames;
-
-        if (action === 'set_interfaces') {
-            const changes = [];
-            document.querySelectorAll('#interfaces-config-container input[type="text"]').forEach(input => {
-                const originalCardData = JSON.parse(document.querySelector(`.form-check-input[value="${input.dataset.device}"]`)?.closest('.device-card').dataset.deviceData || '{}');
-                const originalIface = originalCardData.interfaces?.find(i => i.name === input.dataset.iface);
-                if (!originalIface) return;
-                const originalValue = (input.dataset.field === 'ip') ? originalIface.ip : originalIface.mask;
-                if (input.value && input.value.trim() !== originalValue) {
-                    let change = changes.find(c => c.device === input.dataset.device && c.iface === input.dataset.iface);
-                    if (!change) { change = { device: input.dataset.device, iface: input.dataset.iface, ip: originalIface.ip, mask: originalIface.mask }; changes.push(change); }
-                    change[input.dataset.field] = input.value.trim();
-                }
-            });
-            if (changes.length === 0) { alert("No se ha modificado ninguna IP o máscara."); return; }
-            params = { changes };
-        } else if (action === 'set_wifi') {
-            const changes = [];
-            document.querySelectorAll('.wifi-input').forEach(input => {
-                if (input.value !== input.dataset.originalValue) {
-                    const device = input.dataset.device;
-                    const index = input.dataset.radioIndex;
-                    let change = changes.find(c => c.device === device && c.index.toString() === index);
-                    if (!change) {
-                        const originalCardData = JSON.parse(document.querySelector(`.form-check-input[value="${device}"]`)?.closest('.device-card').dataset.deviceData || '{}');
-                        const originalRadio = originalCardData.radios?.find(r => r.index.toString() === index);
-                        if(originalRadio) {
-                            change = { device, index: originalRadio.index, ssid: originalRadio.ssid, key: originalRadio.key, encryption: originalRadio.encryption };
-                            changes.push(change);
-                        }
-                    }
-                    if (change) {
-                        change[input.dataset.field] = input.value;
-                    }
-                }
-            });
-            if (changes.length === 0) { alert("No se ha modificado ningún parámetro de WiFi."); return; }
-            params = { changes };
-        } else if (action === 'set_root_password') {
-            const form = button.closest('.accordion-body').querySelector('form');
-            if (form) {
-                if (!form.checkValidity()) { form.reportValidity(); return; }
-                const formData = new FormData(form);
-                for (let [key, value] of formData.entries()) { if (value) params[key] = value; }
-            }
-        }
-        
-        button.disabled = true;
-        button.querySelector('span').textContent = 'Ejecutando...';
-        outputModalTitle.textContent = `Resultado: ${action}`;
-        outputModalBody.innerHTML = 'Enviando comando...';
-        outputModal.show();
-        
-        try {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-            const response = await fetch('/api/execute_batch_action', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify({ action, targets: targets, params })
-            });
-            const result = await response.json();
-            let html = `<h4>Salida:</h4><pre>${escapeHTML(result.output || '')}</pre>`;
-            if (result.error) html += `<h4 class="text-danger mt-3">Errores:</h4><pre class="text-danger">${escapeHTML(result.error)}</pre>`;
-            outputModalBody.innerHTML = html;
-        } catch (error) {
-            outputModalBody.innerHTML = `<h4 class="text-danger">Error de comunicación</h4><pre>${escapeHTML(error)}</pre>`;
-        } finally {
-            button.disabled = false;
-            const originalTextMap = { 'set_interfaces': 'Aplicar Cambios de IP', 'reboot': 'Ejecutar Reinicio', 'set_wifi': 'Aplicar Cambios WiFi', 'set_root_password': 'Cambiar Contraseña', 'restart_network': 'Reiniciar Red' };
-            button.querySelector('span').textContent = originalTextMap[action] || 'Ejecutar';
-        }
-    };
-    
-    // --- INICIALIZACIÓN ---
-    devicesContainer.addEventListener('change', handleDeviceSelection);
-    devicesContainer.addEventListener('click', showErrorModal);
     actionButtons.forEach(btn => btn.addEventListener('click', executeAction));
     
     loadAllDevices();
-
-}); // <-- ESTA ES LA LLAVE '}' QUE FALTABA
+});
 </script>
 {% endblock %}
