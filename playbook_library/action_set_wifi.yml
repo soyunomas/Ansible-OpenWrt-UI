@@ -1,0 +1,63 @@
+---
+- name: Configurar parametros WiFi (SSID, Cifrado, Contraseña)
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Aplicar configuracion a cada radio especificada
+      # Este bucle iterará sobre la lista de 'radios' que le pasamos desde la app.
+      # Cada item en la lista es un diccionario con 'device', 'index', 'ssid', etc.
+      loop: "{{ radios | default([]) }}"
+      loop_control:
+        loop_var: radio
+      # Usamos 'when' para asegurar que la tarea solo se ejecute en el host correcto
+      # para el que está destinada esta configuración de radio.
+      when: radio.device == inventory_hostname
+      ansible.builtin.raw: |
+        #!/bin/sh
+        # ==============================================================================
+        # == Script para configurar una interfaz WiFi de forma segura              ==
+        # ==============================================================================
+        
+        # Variables pasadas desde Ansible (con comillas simples defensivas)
+        IFACE_INDEX='{{ radio.index }}'
+        SSID='{{ radio.ssid }}'
+        ENCRYPTION='{{ radio.encryption }}'
+        KEY='{{ radio.key }}'
+        
+        # Comprobar si la interfaz wifi existe en la configuración.
+        # uci show wireless.@wifi-iface[$IFACE_INDEX] devolverá un error si no existe.
+        if ! uci show wireless | grep -q "@wifi-iface\[$IFACE_INDEX\]"; then
+          echo "ERROR: La interfaz WiFi con índice $IFACE_INDEX no existe en {{ inventory_hostname }}." >&2
+          exit 1
+        fi
+
+        echo "Configurando interfaz @wifi-iface[$IFACE_INDEX] en {{ inventory_hostname }}..."
+        
+        # Aplicar la nueva configuración
+        uci set "wireless.@wifi-iface[$IFACE_INDEX].ssid=$SSID"
+        uci set "wireless.@wifi-iface[$IFACE_INDEX].encryption=$ENCRYPTION"
+        
+        # Solo establecer la clave si el cifrado no es 'none' (abierto)
+        if [ "$ENCRYPTION" != "none" ]; then
+          uci set "wireless.@wifi-iface[$IFACE_INDEX].key=$KEY"
+        else
+          # Si el cifrado es 'none', eliminamos la clave por seguridad.
+          uci delete "wireless.@wifi-iface[$IFACE_INDEX].key"
+        fi
+        
+        # Guardar los cambios de la seccion 'wireless'
+        uci commit wireless
+        
+        echo "OK: Configuracion para SSID '$SSID' aplicada y guardada."
+        exit 0
+      register: uci_result
+      changed_when: "'OK:' in uci_result.stdout"
+      failed_when: uci_result.rc != 0
+
+    - name: Reiniciar el servicio WiFi para aplicar todos los cambios
+      # Esta tarea se ejecuta una sola vez al final, después de que el bucle termine.
+      # 'wifi reload' es más rápido y menos disruptivo que reiniciar toda la red.
+      ansible.builtin.raw: wifi reload
+      register: reload_result
+      changed_when: reload_result.rc == 0

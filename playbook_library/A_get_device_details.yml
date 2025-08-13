@@ -1,0 +1,77 @@
+# =================================================================================
+# ==        A_get_device_details.yml                                             ==
+# =================================================================================
+---
+- name: Get Single Device Details (RAW)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Execute script to gather device details
+      ansible.builtin.raw: |
+        #!/bin/sh
+        # --- [SECCIÓN DE INFO GENERAL Y DE RED (Sin cambios)] ---
+        ip -o -4 addr show | grep -v ' lo ' | while read -r line; do iface=$(echo "$line" | awk '{print $2}'); ip_cidr=$(echo "$line" | awk '{print $4}'); echo "INTERFACE_INFO::${iface}|${ip_cidr}"; done
+        echo "GATEWAY::$(ip route | awk '/default/ {print $3}' 2>/dev/null || echo 'N/A')"
+        echo "HOSTNAME::$(uname -n 2>/dev/null || echo 'N/A')"
+        echo "MODEL::$(cat /tmp/sysinfo/model 2>/dev/null || echo 'N/A')"
+        echo "ARCHITECTURE::$(uname -m 2>/dev/null || echo 'N/A')"
+        echo "FIRMWARE::$(grep OPENWRT_RELEASE /etc/os-release | awk 'BEGIN{FS="\""} {print $2}' 2>/dev/null || echo 'N/A')"
+        echo "KERNEL_VERSION::$(uname -r 2>/dev/null || echo 'N/A')"
+        echo "LOCAL_TIME::$(date)"
+        echo "UPTIME::$(uptime | sed 's/.*up \([^,]*\), .*/\1/' 2>/dev/null || echo 'N/A')"
+        echo "LOADAVG::$(uptime | awk -F'load average: ' '{print $2}' 2>/dev/null || echo 'N/A')"
+        echo "MEMTOTAL_KB::$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo '0')"
+        echo "MEMFREE_KB::$(awk '/MemFree/ {print $2}' /proc/meminfo 2>/dev/null || echo '0')"
+        echo "DISKUSAGE::$(df -h / | tail -n 1 | awk '{print $4 " libres de " $2 " (" $5 " usados)"}' 2>/dev/null || echo 'N/A')"
+        echo "DMESG::$(dmesg | tail -n 15 | tr '\n' '|' 2>/dev/null || echo 'N/A')"
+        
+        # ### LÓGICA DE DETECCIÓN DE WIFI CORREGIDA Y ROBUSTA ###
+        # 1. Buscamos TODAS las líneas que definen una 'wifi-iface'.
+        # 2. Extraemos el nombre de la sección de forma correcta.
+        uci show wireless | grep '=wifi-iface' | cut -d= -f1 | while read -r full_section_name; do
+          
+          # full_section_name es 'wireless.default_radio0', 'wireless.whatever'
+          iface_section=$(echo "$full_section_name" | cut -d. -f2)
+
+          # Obtenemos el nombre del dispositivo de radio físico (ej: 'radio0')
+          radio_dev=$(uci get "$full_section_name.device" 2>/dev/null || echo "N/A")
+          
+          if [ "$radio_dev" = "N/A" ]; then
+            continue
+          fi
+          
+          # Obtenemos los datos de la INTERFAZ (SSID, cifrado, etc.)
+          ssid=$(uci get "$full_section_name.ssid" 2>/dev/null || echo "N/A")
+          encryption=$(uci get "$full_section_name.encryption" 2>/dev/null || echo "none")
+          key=$(uci get "$full_section_name.key" 2>/dev/null || echo "")
+          disabled=$(uci get "$full_section_name.disabled" 2>/dev/null || echo "0")
+          
+          # Si la interfaz está deshabilitada, reflejarlo en el SSID
+          if [ "$disabled" = "1" ]; then
+            ssid="N/A (Desactivado)"
+          fi
+
+          # Obtenemos los datos del RADIO FÍSICO (Wi-Fi 5, Wi-Fi 6, etc.)
+          hwmode=$(uci get "wireless.$radio_dev.hwmode" 2>/dev/null)
+          htmode=$(uci get "wireless.$radio_dev.htmode" 2>/dev/null)
+          wifi_gen="Legacy"
+          if echo "$htmode" | grep -q "EHT"; then wifi_gen="Wi-Fi 7"; elif echo "$htmode" | grep -q "HE"; then wifi_gen="Wi-Fi 6"; elif echo "$htmode" | grep -q "VHT"; then wifi_gen="Wi-Fi 5"; elif echo "$htmode" | grep -q "HT"; then wifi_gen="Wi-Fi 4"; elif echo "$hwmode" | grep -q "11g"; then wifi_gen="Wi-Fi 3"; elif echo "$hwmode" | grep -q "11a"; then wifi_gen="Wi-Fi 2"; fi
+          
+          # Obtenemos los cifrados soportados
+          supported_ciphers_str=""
+          if command -v iw > /dev/null; then 
+            iw_output=$(iw phy "$radio_dev" info 2>/dev/null)
+            if echo "$iw_output" | grep -q "SAE"; then supported_ciphers_str="${supported_ciphers_str}sae,"; fi
+            if echo "$iw_output" | grep -q "WPA"; then supported_ciphers_str="${supported_ciphers_str}psk2,psk,psk-mixed,sae-mixed,"; fi
+            if echo "$iw_output" | grep -q "WEP"; then supported_ciphers_str="${supported_ciphers_str}wep-open,wep-shared,"; fi
+          fi
+          supported_ciphers_str="${supported_ciphers_str}none"
+          supported_ciphers=$(echo "$supported_ciphers_str" | sed 's/,$//')
+          
+          # Obtenemos un índice numérico simple para la UI
+          radio_index=$(echo "$radio_dev" | sed 's/[^0-9]*//g')
+
+          # Formateamos la salida final. No se necesita el 'key' aquí por seguridad. El frontend lo tratará.
+          echo "RADIO_INFO::${radio_dev}|${wifi_gen}|${ssid}|${encryption}|dummy_key_placeholder|${supported_ciphers}|${radio_index}"
+        done
+      changed_when: false

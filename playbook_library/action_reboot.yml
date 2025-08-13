@@ -1,0 +1,17 @@
+---
+- name: Reiniciar el dispositivo (Método Directo y Fiable)
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Enviar comando de reinicio directo e ignorar el error de conexión
+      # Este método ejecuta '/sbin/reboot' directamente.
+      # La tarea fallará porque la conexión se corta, pero el reinicio ya se habrá iniciado.
+      # 'ignore_errors: true' es la directiva clave que hace que esto funcione,
+      # aceptando el fallo de conexión como un resultado esperado.
+      ansible.builtin.raw: /sbin/reboot
+      ignore_errors: true
+
+    - name: Mensaje de confirmacion
+      ansible.builtin.debug:
+        msg: "El comando de reinicio ha sido enviado a {{ inventory_hostname }}. El dispositivo debería reiniciarse."

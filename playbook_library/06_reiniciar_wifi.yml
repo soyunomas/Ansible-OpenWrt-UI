@@ -1,0 +1,25 @@
+---
+- name: Reiniciar el Servicio WiFi
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Deshabilitar todas las interfaces WiFi
+      ansible.builtin.raw: wifi down
+      register: wifi_down
+      changed_when: false
+      
+    - name: Esperar 3 segundos
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Habilitar todas las interfaces WiFi
+      ansible.builtin.raw: wifi up
+      register: wifi_up
+      changed_when: false
+
+    - name: Mostrar estado final
+      ansible.builtin.debug:
+        msg: |
+          Comando 'wifi down' ejecutado.
+          Comando 'wifi up' ejecutado. El servicio WiFi ha sido reiniciado.

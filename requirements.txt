@@ -1,2 +1,5 @@
 # Contenido para el archivo requirements.txt
 Flask
+Flask-Login
+filelock  # Para la escritura segura en el archivo JSON
+Flask-WTF

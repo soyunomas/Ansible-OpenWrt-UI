@@ -1,0 +1,47 @@
+---
+- name: 'PASO UNICO: Configurar Interfaz, Guardar y Reiniciar Red'
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: '1. Derivar seccion UCI, aplicar y guardar cambios'
+      ansible.builtin.raw: |
+        #!/bin/sh
+        # ============================================================================
+        # == SCRIPT BASADO EN EL DIAGNOSTICO REAL - LA SOLUCION CORRECTA Y FINAL    ==
+        # ============================================================================
+        
+        # Si la interfaz empieza con 'br-', asumimos que es un bridge y
+        # derivamos el nombre de la seccion UCI quitando el prefijo.
+        # Ejemplo: 'br-lan' -> 'lan'
+        if echo "{{ iface_name }}" | grep -q '^br-'; then
+          TARGET_SECTION=$(echo "{{ iface_name }}" | sed 's/^br-//')
+        else
+          # Para otras interfaces, asumimos que el nombre de la interfaz es la seccion.
+          TARGET_SECTION="{{ iface_name }}"
+        fi
+
+        # Verificamos que la sección derivada realmente existe en la configuración.
+        # El comando 'uci show' devolverá un error si la sección no existe.
+        if ! uci show "network.$TARGET_SECTION" >/dev/null 2>&1; then
+          echo "ERROR: La seccion UCI derivada '$TARGET_SECTION' no existe para la interfaz '{{ iface_name }}'." >&2
+          exit 1
+        fi
+        
+        # Aplicamos toda la configuración a la sección correcta
+        uci set "network.$TARGET_SECTION.proto=static"
+        uci set "network.$TARGET_SECTION.ipaddr={{ ip }}"
+        uci set "network.$TARGET_SECTION.netmask={{ mask }}"
+        
+        # Guardamos los cambios en la memoria flash
+        uci commit network
+        
+        echo "OK: Configuracion aplicada y guardada en la seccion '$TARGET_SECTION'."
+        exit 0
+      register: config_result
+      changed_when: "'OK:' in config_result.stdout"
+      failed_when: config_result.rc != 0
+
+    - name: '2. Reiniciar el servicio de red para aplicar los cambios'
+      ansible.builtin.raw: /etc/init.d/network restart
+      ignore_errors: true

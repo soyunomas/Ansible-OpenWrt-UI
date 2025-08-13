@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block title %}Mi Perfil y Preferencias{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Mi Perfil y Preferencias</h1>
+
+<div class="row g-4">
+    <!-- Columna para Cambiar Contraseña -->
+    <div class="col-md-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-key-fill me-2 fs-5"></i>
+                <h5 class="mb-0">Cambiar Contraseña</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('profile') }}">
+                    <!-- ### NUEVO ### - Campo oculto para el token CSRF -->
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">Contraseña Actual</label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Nueva Contraseña</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required minlength="8">
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirmar Nueva Contraseña</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Actualizar Contraseña
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Columna para Preferencias de la Interfaz -->
+    <div class="col-md-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-palette-fill me-2 fs-5"></i>
+                <h5 class="mb-0">Preferencias de Interfaz</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch form-check-lg">
+                    <input class="form-check-input" type="checkbox" id="theme-switch">
+                    <label class="form-check-label" for="theme-switch">
+                        <span id="theme-label-text">Activar Modo Oscuro</span>
+                    </label>
+                </div>
+                <div class="form-text mt-2">
+                    Tu preferencia se guardará en este navegador.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const themeSwitch = document.getElementById('theme-switch');
+    const themeLabel = document.getElementById('theme-label-text');
+    
+    // Función para actualizar el interruptor y la etiqueta
+    function updateSwitchState() {
+        const isDarkMode = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        themeSwitch.checked = isDarkMode;
+        themeLabel.textContent = isDarkMode ? 'Desactivar Modo Oscuro' : 'Activar Modo Oscuro';
+    }
+
+    // Actualizar al cargar la página
+    updateSwitchState();
+
+    // Actualizar cuando se cambia con el interruptor
+    themeSwitch.addEventListener('change', function() {
+        const theme = this.checked ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-bs-theme', theme);
+        localStorage.setItem('theme', theme);
+        updateSwitchState();
+    });
+});
+</script>
+{% endblock %}

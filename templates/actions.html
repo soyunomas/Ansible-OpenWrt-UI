@@ -1,0 +1,367 @@
+{% extends "layout.html" %}
+{% block title %}Acciones en Lote - Ansible Panel{% endblock %}
+
+{% block content %}
+<style>
+    .device-card { border: 1px solid #dee2e6; transition: all 0.2s ease-in-out; }
+    .device-card:hover { border-color: #0d6efd; box-shadow: 0 .125rem .25rem rgba(0,0,0,.075); }
+    .device-card.selected { background-color: #e9f2ff; border-color: #0d6efd; }
+    .device-card.error-loading { background-color: #fff0f0; border-color: #e9a0a0; opacity: 0.8; }
+    .action-button { display: flex; align-items: center; gap: 0.5rem; }
+    #output-modal-body, .output-console { background-color: #212529; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; max-height: 70vh; }
+    .interface-group { border: 1px solid #ddd; border-radius: .25rem; margin-bottom: 1rem; }
+    .interface-group .card-header { background-color: #f7f7f7; font-weight: bold; }
+</style>
+
+<!-- Título y descripción -->
+<div class="d-flex justify-content-between align-items-center mb-4"><h1>Acciones en Lote</h1></div>
+
+<!-- Paso 1: Selección de Dispositivos -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header"><h5 class="mb-0">Paso 1: Selecciona los Dispositivos</h5></div>
+    <div class="card-body">
+        <div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="select-all-checkbox"><label class="form-check-label fw-bold" for="select-all-checkbox">Seleccionar / Deseleccionar Todos</label></div>
+        <div id="devices-container" class="row g-3"><div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2">Obteniendo lista de dispositivos...</p></div></div>
+    </div>
+</div>
+
+<!-- Paso 2: Elección de Acción -->
+<div class="card shadow-sm">
+    <div class="card-header"><h5 class="mb-0">Paso 2: Elige una Acción</h5></div>
+    <div class="card-body"><div class="accordion" id="actions-accordion">
+        
+        <div class="accordion-item"><h2 class="accordion-header" id="heading-interfaces"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-interfaces"><i class="bi bi-diagram-3-fill me-2"></i>Configurar IPs de Interfaces</button></h2><div id="collapse-interfaces" class="accordion-collapse collapse" data-bs-parent="#actions-accordion"><div class="accordion-body"><div id="interfaces-config-container"><p class="text-muted">Selecciona dispositivos para ver sus interfaces.</p></div><button class="btn btn-warning action-button mt-3" data-action="set_interfaces" disabled><i class="bi bi-pencil-fill"></i><span>Aplicar Cambios de IP</span></button></div></div></div>
+        
+        <div class="accordion-item"><h2 class="accordion-header" id="heading-wifi"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-wifi"><i class="bi bi-wifi me-2"></i>Configurar WiFi (SSID/Contraseña)</button></h2><div id="collapse-wifi" class="accordion-collapse collapse" data-bs-parent="#actions-accordion"><div class="accordion-body"><div id="wifi-config-container"><p class="text-muted">Selecciona dispositivos para ver sus opciones de WiFi.</p></div><button class="btn btn-primary action-button mt-3" data-action="set_wifi" disabled><i class="bi bi-wifi"></i><span>Aplicar Cambios WiFi</span></button></div></div></div>
+        
+        <div class="accordion-item"><h2 class="accordion-header" id="heading-root"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-root"><i class="bi bi-key-fill me-2"></i>Cambiar Contraseña de Root</button></h2><div id="collapse-root" class="accordion-collapse collapse" data-bs-parent="#actions-accordion"><div class="accordion-body"><p class="text-danger"><strong>¡Atención!</strong> Perderás el acceso si olvidas esta contraseña.</p><form onsubmit="return false;"><div class="col-md-6"><label class="form-label">Nueva Contraseña de Root</label><div class="input-group"><input type="password" class="form-control" name="new_root_password" required><button class="btn btn-outline-secondary password-toggle-btn" type="button"><i class="bi bi-eye-fill"></i></button></div></div></form><button class="btn btn-danger action-button mt-3" data-action="set_root_password" disabled><i class="bi bi-key-fill"></i><span>Cambiar Contraseña</span></button></div></div></div>
+        
+        <div class="accordion-item"><h2 class="accordion-header" id="heading-reboot"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-reboot"><i class="bi bi-power me-2"></i>Reiniciar Routers</button></h2><div id="collapse-reboot" class="accordion-collapse collapse" data-bs-parent="#actions-accordion"><div class="accordion-body"><p>Esta acción reiniciará completamente los dispositivos seleccionados.</p><button class="btn btn-danger action-button" data-action="reboot" disabled><i class="bi bi-exclamation-triangle-fill"></i><span>Ejecutar Reinicio</span></button></div></div></div>
+        
+        <div class="accordion-item"><h2 class="accordion-header" id="heading-simple"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-simple"><i class="bi bi-arrow-repeat me-2"></i>Otras Acciones de Reinicio</button></h2><div id="collapse-simple" class="accordion-collapse collapse" data-bs-parent="#actions-accordion"><div class="accordion-body d-flex gap-2"><button class="btn btn-secondary action-button" data-action="restart_network" disabled><i class="bi bi-ethernet"></i><span>Reiniciar Red</span></button></div></div></div>
+
+    </div></div>
+</div>
+
+<!-- Modals -->
+<div class="modal fade" id="outputModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="outputModalLabel">Resultado</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="output-modal-body"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
+<div class="modal fade" id="errorModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header bg-danger text-white"><h5 class="modal-title" id="errorModalLabel">Detalles del Error</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>La carga de datos para este dispositivo falló. Esta es la salida completa:</p><pre class="output-console" id="error-output-content" style="max-height: 60vh;"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- REFERENCIAS A ELEMENTOS DEL DOM ---
+    const devicesContainer = document.getElementById('devices-container');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const actionButtons = document.querySelectorAll('.action-button');
+    const outputModal = new bootstrap.Modal(document.getElementById('outputModal'));
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    const outputModalBody = document.getElementById('output-modal-body');
+    const outputModalTitle = document.getElementById('outputModalLabel');
+    const interfacesConfigContainer = document.getElementById('interfaces-config-container');
+    const wifiConfigContainer = document.getElementById('wifi-config-container');
+
+    // --- FUNCIONES AUXILIARES ---
+    const escapeHTML = (str) => str ? String(str).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]) : '';
+
+    const addPasswordToggleListeners = () => {
+        document.querySelectorAll('.password-toggle-btn').forEach(button => {
+            if (button.dataset.listenerAttached) return;
+            button.dataset.listenerAttached = 'true';
+            button.addEventListener('click', function() {
+                const input = this.closest('.input-group').querySelector('input');
+                const icon = this.querySelector('i');
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                icon.classList.toggle('bi-eye-fill', !isPassword);
+                icon.classList.toggle('bi-eye-slash-fill', isPassword);
+            });
+        });
+    };
+
+    // --- LÓGICA DE CARGA DE DISPOSITIVOS ---
+    const createDeviceSkeletonCard = (deviceName) => {
+        const cardWrapper = document.createElement('div');
+        cardWrapper.className = 'col-lg-3 col-md-4 col-sm-6';
+        const card = document.createElement('div');
+        card.className = 'card device-card h-100';
+        card.id = `card-${deviceName}`;
+        card.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1"><h6 class="card-title mb-1">${escapeHTML(deviceName)}</h6><small class="text-muted" id="model-${deviceName}">Cargando...</small></div>
+                    <input class="form-check-input ms-3" type="checkbox" value="${escapeHTML(deviceName)}" disabled>
+                </div>
+                <hr class="my-2">
+                <div style="font-size: 0.9rem;" class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div id="ip-${deviceName}"><div class="spinner-grow spinner-grow-sm text-secondary" role="status"></div> IP...</div>
+                        <div class="mt-1" id="radios-${deviceName}"><div class="spinner-grow spinner-grow-sm text-secondary" role="status"></div> Radios...</div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger error-button" style="display: none;" data-device-name="${escapeHTML(deviceName)}"><i class="bi bi-bug-fill"></i></button>
+                </div>
+            </div>`;
+        cardWrapper.appendChild(card);
+        return cardWrapper;
+    };
+
+    const populateCardData = async (deviceName) => {
+        const card = document.getElementById(`card-${deviceName}`);
+        try {
+            const response = await fetch(`/api/status/${deviceName}`);
+            const data = await response.json();
+            if (!response.ok) throw new Error(JSON.stringify(data));
+            
+            card.dataset.deviceData = JSON.stringify(data);
+            document.getElementById(`model-${deviceName}`).textContent = data.model || 'N/A';
+            const lanIp = data.interfaces.find(iface => iface.name === 'br-lan');
+            const displayIp = lanIp ? lanIp.ip : (data.interfaces[0]?.ip || 'N/A');
+            document.getElementById(`ip-${deviceName}`).innerHTML = `<i class="bi bi-router-fill me-2"></i> ${escapeHTML(displayIp)}`;
+            
+            let radioHtml = '<span class="text-muted">No radios</span>';
+            if (data.radios && data.radios.length > 0) {
+                radioHtml = data.radios.map(r => `<span class="badge bg-primary me-1">${escapeHTML(r.name)}</span>`).join('');
+            }
+            document.getElementById(`radios-${deviceName}`).innerHTML = `<i class="bi bi-wifi me-2"></i> ${radioHtml}`;
+            
+            const checkbox = card.querySelector('.form-check-input');
+            checkbox.disabled = false;
+            checkbox.value = data.inventory_name;
+        } catch (error) {
+            card.classList.add('error-loading');
+            const errorData = JSON.parse(error.message || '{}');
+            document.getElementById(`model-${deviceName}`).innerHTML = `<span class="text-danger">${escapeHTML(errorData.error || "Error de carga")}</span>`;
+            document.getElementById(`ip-${deviceName}`).innerHTML = '';
+            document.getElementById(`radios-${deviceName}`).innerHTML = '';
+            const errorButton = card.querySelector('.error-button');
+            if (errorData.ansible_stdout || errorData.ansible_stderr) {
+                errorButton.style.display = 'block';
+                errorButton.dataset.errorOutput = `STDOUT:\n${errorData.ansible_stdout || ''}\n\nSTDERR:\n${errorData.ansible_stderr || ''}`;
+            }
+        }
+    };
+    
+    const loadAllDevices = async () => {
+        try {
+            const response = await fetch('/api/devices');
+            const deviceNames = await response.json();
+            devicesContainer.innerHTML = '';
+            if (!deviceNames.length) { 
+                devicesContainer.innerHTML = '<p class="text-center col-12">No hay dispositivos en el inventario.</p>'; 
+                return;
+            }
+            deviceNames.forEach(name => devicesContainer.appendChild(createDeviceSkeletonCard(name)));
+            await Promise.all(deviceNames.map(name => populateCardData(name)));
+        } catch (error) {
+            console.error("Error fatal al cargar dispositivos:", error);
+            devicesContainer.innerHTML = '<p class="text-danger text-center col-12">Error fatal al cargar dispositivos. Revisa la consola (F12) para más detalles.</p>';
+        }
+    };
+    
+    const showErrorModal = (e) => {
+        const button = e.target.closest('.error-button');
+        if (!button) return;
+        document.getElementById('errorModalLabel').textContent = `Detalles del Error en ${button.dataset.deviceName}`;
+        document.getElementById('error-output-content').textContent = button.dataset.errorOutput;
+        errorModal.show();
+    };
+    
+    // --- LÓGICA DE ACTUALIZACIÓN DE UI (EL NÚCLEO DEL CAMBIO) ---
+    const updateActionForms = () => {
+        const selectedCheckboxes = Array.from(document.querySelectorAll('.device-card .form-check-input:checked'));
+        const selectedDevicesData = selectedCheckboxes.map(cb => {
+            const card = cb.closest('.device-card');
+            return card.dataset.deviceData ? JSON.parse(card.dataset.deviceData) : null;
+        }).filter(Boolean);
+
+        // Actualizar formulario de Interfaces de Red
+        updateInterfacesUI(selectedDevicesData);
+        // Actualizar formulario de WiFi
+        updateWifiUI(selectedDevicesData);
+    };
+
+    const updateInterfacesUI = (devicesData) => {
+        interfacesConfigContainer.innerHTML = '';
+        if (devicesData.length === 0) {
+            interfacesConfigContainer.innerHTML = '<p class="text-muted">Selecciona dispositivos para ver sus interfaces.</p>';
+            return;
+        }
+        // (La lógica de renderizado de interfaces no cambia, se mueve aquí)
+        let html = '';
+        devicesData.forEach(device => {
+            html += `<div class="card interface-group"><div class="card-header">${escapeHTML(device.hostname)}</div><div class="card-body">`;
+            if (!device.interfaces || device.interfaces.length === 0) {
+                html += '<p class="text-muted">Este dispositivo no tiene interfaces de red.</p>';
+            } else {
+                device.interfaces.forEach(iface => {
+                    html += `<div class="row g-2 align-items-center mb-2">
+                            <div class="col-sm-3 fw-bold">${escapeHTML(iface.name)}</div>
+                            <div class="col-sm-5"><div class="input-group input-group-sm"><span class="input-group-text">IP</span><input type="text" class="form-control" data-device="${escapeHTML(device.inventory_name)}" data-iface="${escapeHTML(iface.name)}" data-field="ip" value="${escapeHTML(iface.ip)}"></div></div>
+                            <div class="col-sm-4"><div class="input-group input-group-sm"><span class="input-group-text">Mask</span><input type="text" class="form-control" data-device="${escapeHTML(device.inventory_name)}" data-iface="${escapeHTML(iface.name)}" data-field="mask" value="${escapeHTML(iface.mask)}"></div></div>
+                        </div>`;
+                });
+            }
+            html += '</div></div>';
+        });
+        interfacesConfigContainer.innerHTML = html;
+    };
+
+    const updateWifiUI = (devicesData) => {
+        wifiConfigContainer.innerHTML = '';
+        if (devicesData.length === 0) {
+            wifiConfigContainer.innerHTML = '<p class="text-muted">Selecciona dispositivos para ver sus opciones de WiFi.</p>';
+            return;
+        }
+
+        const ENCRYPTION_OPTIONS = [/* ... (el mapa de cifrado va aquí) ... */];
+        const ENCRYPTION_OPTIONS_FLATTENED = [
+            { label: 'WPA3 (Recomendado)', options: [{ value: 'sae', text: 'WPA3 Personal (SAE)', aliases: ['sae'] },{ value: 'sae-mixed', text: 'WPA2/WPA3 Mixto (SAE-Mixed)', aliases: ['sae-mixed'] }] },
+            { label: 'WPA2 (Seguro)', options: [{ value: 'psk2', text: 'WPA2-PSK (AES - Fuerte)', aliases: ['psk2', 'psk2+ccmp', 'psk2+aes'] },{ value: 'psk2+tkip', text: 'WPA2-PSK (TKIP - Inseguro)', aliases: ['psk2+tkip'] },{ value: 'psk2+tkip+ccmp', text: 'WPA2-PSK (TKIP+AES - Mixto)', aliases: ['psk2+tkip+ccmp', 'psk2+tkip+aes'] }] },
+            { label: 'WPA/WPA2 Mixto', options: [{ value: 'psk-mixed', text: 'WPA/WPA2-PSK (AES - Fuerte)', aliases: ['psk-mixed', 'psk-mixed+ccmp', 'psk-mixed+aes'] },{ value: 'psk-mixed+tkip', text: 'WPA/WPA2-PSK (TKIP - Inseguro)', aliases: ['psk-mixed+tkip'] },{ value: 'psk-mixed+tkip+ccmp', text: 'WPA/WPA2-PSK (TKIP+AES - Mixto)', aliases: ['psk-mixed+tkip+ccmp', 'psk-mixed+tkip+aes'] }] },
+            { label: 'WPA (Obsoleto)', options: [{ value: 'psk', text: 'WPA-PSK (AES - Fuerte)', aliases: ['psk', 'psk+ccmp', 'psk+aes'] },{ value: 'psk+tkip', text: 'WPA-PSK (TKIP - Inseguro)', aliases: ['psk+tkip'] },{ value: 'psk+tkip+ccmp', text: 'WPA-PSK (TKIP+AES - Mixto)', aliases: ['psk+tkip+ccmp', 'psk+tkip+aes'] }] },
+            { label: 'Legacy y Abiertas (No Recomendado)', options: [{ value: 'wep-open', text: 'WEP (Totalmente Inseguro)', aliases: ['wep', 'wep-open'] },{ value: 'wep-shared', text: 'WEP Shared Key (Inseguro)', aliases: ['wep-shared'] },{ value: 'owe', text: 'OWE (Enhanced Open)', aliases: ['owe'] },{ value: 'none', text: 'OPEN (Sin Seguridad)', aliases: ['none'] }] }
+        ];
+
+        let html = '';
+        devicesData.forEach(device => {
+            if (!device.radios || device.radios.length === 0) return;
+
+            html += `<div class="card interface-group"><div class="card-header">${escapeHTML(device.hostname)}</div><div class="card-body">`;
+            device.radios.forEach(radio => {
+                let optionsHtml = ENCRYPTION_OPTIONS_FLATTENED.map(group => {
+                    let groupOptions = group.options.map(option => {
+                        const isSelected = option.aliases.includes(radio.encryption);
+                        return `<option value="${option.value}" ${isSelected ? 'selected' : ''}>${option.text}</option>`;
+                    }).join('');
+                    return `<optgroup label="${group.label}">${groupOptions}</optgroup>`;
+                }).join('');
+
+                html += `<div class="row g-2 align-items-center mb-3">
+                        <div class="col-sm-2 fw-bold"><span class="badge bg-primary">${escapeHTML(radio.name)}</span></div>
+                        <div class="col-sm-3"><input type="text" class="form-control form-control-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${radio.index}" data-field="ssid" value="${escapeHTML(radio.ssid)}" data-original-value="${escapeHTML(radio.ssid)}" placeholder="SSID"></div>
+                        <div class="col-sm-3"><div class="input-group input-group-sm"><input type="password" class="form-control wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${radio.index}" data-field="key" value="${escapeHTML(radio.key)}" data-original-value="${escapeHTML(radio.key)}" placeholder="Contraseña"><button class="btn btn-outline-secondary password-toggle-btn" type="button"><i class="bi bi-eye-fill"></i></button></div></div>
+                        <div class="col-sm-4"><select class="form-select form-select-sm wifi-input" data-device="${escapeHTML(device.inventory_name)}" data-radio-index="${radio.index}" data-field="encryption" data-original-value="${radio.encryption}">${optionsHtml}</select></div>
+                    </div>`;
+            });
+            html += '</div></div>';
+        });
+        wifiConfigContainer.innerHTML = html;
+        addPasswordToggleListeners();
+    };
+
+    // --- LÓGICA DE EVENTOS ---
+    const toggleActionButtons = () => {
+        const anySelected = document.querySelectorAll('.device-card .form-check-input:checked').length > 0;
+        actionButtons.forEach(btn => btn.disabled = !anySelected);
+    };
+
+    const handleDeviceSelection = (e) => {
+        if (e.target.classList.contains('form-check-input')) {
+            e.target.closest('.device-card').classList.toggle('selected', e.target.checked);
+            toggleActionButtons();
+            updateActionForms();
+        }
+    };
+    
+    selectAllCheckbox.addEventListener('change', () => {
+        document.querySelectorAll('.device-card .form-check-input:not(:disabled)').forEach(cb => {
+            cb.checked = selectAllCheckbox.checked;
+            cb.closest('.device-card').classList.toggle('selected', cb.checked);
+        });
+        toggleActionButtons();
+        updateActionForms();
+    });
+
+    const executeAction = async (e) => {
+        const button = e.currentTarget;
+        const action = button.dataset.action;
+        const selectedDevicesNames = Array.from(document.querySelectorAll('.device-card .form-check-input:checked')).map(cb => cb.value);
+
+        if (selectedDevicesNames.length === 0) return;
+
+        let params = {};
+        let targets = selectedDevicesNames;
+
+        if (action === 'set_interfaces') {
+            const changes = [];
+            document.querySelectorAll('#interfaces-config-container input[type="text"]').forEach(input => {
+                const originalCardData = JSON.parse(document.querySelector(`.form-check-input[value="${input.dataset.device}"]`)?.closest('.device-card').dataset.deviceData || '{}');
+                const originalIface = originalCardData.interfaces?.find(i => i.name === input.dataset.iface);
+                if (!originalIface) return;
+                const originalValue = (input.dataset.field === 'ip') ? originalIface.ip : originalIface.mask;
+                if (input.value && input.value.trim() !== originalValue) {
+                    let change = changes.find(c => c.device === input.dataset.device && c.iface === input.dataset.iface);
+                    if (!change) { change = { device: input.dataset.device, iface: input.dataset.iface, ip: originalIface.ip, mask: originalIface.mask }; changes.push(change); }
+                    change[input.dataset.field] = input.value.trim();
+                }
+            });
+            if (changes.length === 0) { alert("No se ha modificado ninguna IP o máscara."); return; }
+            params = { changes };
+        } else if (action === 'set_wifi') {
+            const changes = [];
+            document.querySelectorAll('.wifi-input').forEach(input => {
+                if (input.value !== input.dataset.originalValue) {
+                    const device = input.dataset.device;
+                    const index = input.dataset.radioIndex;
+                    let change = changes.find(c => c.device === device && c.index.toString() === index);
+                    if (!change) {
+                        const originalCardData = JSON.parse(document.querySelector(`.form-check-input[value="${device}"]`)?.closest('.device-card').dataset.deviceData || '{}');
+                        const originalRadio = originalCardData.radios?.find(r => r.index.toString() === index);
+                        if(originalRadio) {
+                            change = { device, index: originalRadio.index, ssid: originalRadio.ssid, key: originalRadio.key, encryption: originalRadio.encryption };
+                            changes.push(change);
+                        }
+                    }
+                    if (change) {
+                        change[input.dataset.field] = input.value;
+                    }
+                }
+            });
+            if (changes.length === 0) { alert("No se ha modificado ningún parámetro de WiFi."); return; }
+            params = { changes };
+        } else if (action === 'set_root_password') {
+            const form = button.closest('.accordion-body').querySelector('form');
+            if (form) {
+                if (!form.checkValidity()) { form.reportValidity(); return; }
+                const formData = new FormData(form);
+                for (let [key, value] of formData.entries()) { if (value) params[key] = value; }
+            }
+        }
+        
+        button.disabled = true;
+        button.querySelector('span').textContent = 'Ejecutando...';
+        outputModalTitle.textContent = `Resultado: ${action}`;
+        outputModalBody.innerHTML = 'Enviando comando...';
+        outputModal.show();
+        
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const response = await fetch('/api/execute_batch_action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ action, targets: targets, params })
+            });
+            const result = await response.json();
+            let html = `<h4>Salida:</h4><pre>${escapeHTML(result.output || '')}</pre>`;
+            if (result.error) html += `<h4 class="text-danger mt-3">Errores:</h4><pre class="text-danger">${escapeHTML(result.error)}</pre>`;
+            outputModalBody.innerHTML = html;
+        } catch (error) {
+            outputModalBody.innerHTML = `<h4 class="text-danger">Error de comunicación</h4><pre>${escapeHTML(error)}</pre>`;
+        } finally {
+            button.disabled = false;
+            const originalTextMap = { 'set_interfaces': 'Aplicar Cambios de IP', 'reboot': 'Ejecutar Reinicio', 'set_wifi': 'Aplicar Cambios WiFi', 'set_root_password': 'Cambiar Contraseña', 'restart_network': 'Reiniciar Red' };
+            button.querySelector('span').textContent = originalTextMap[action] || 'Ejecutar';
+        }
+    };
+    
+    // --- INICIALIZACIÓN ---
+    devicesContainer.addEventListener('change', handleDeviceSelection);
+    devicesContainer.addEventListener('click', showErrorModal);
+    actionButtons.forEach(btn => btn.addEventListener('click', executeAction));
+    
+    loadAllDevices();
+
+}); // <-- ESTA ES LA LLAVE '}' QUE FALTABA
+</script>
+{% endblock %}
