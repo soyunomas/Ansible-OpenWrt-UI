@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.7+-blue.svg) ![Ansible](https://img.shields.io/badge/Ansible-2.9+-red.svg) ![Flask](https://img.shields.io/badge/Flask-2.0+-lightgrey.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-Panel de control web **seguro** para gestionar, monitorizar y automatizar routers OpenWrt a través de playbooks de Ansible, con una interfaz gráfica intuitiva.
+Panel de control web para gestionar, monitorizar y automatizar routers OpenWrt a través de playbooks de Ansible, con una interfaz gráfica intuitiva.
 
 ## ✨ Características
 
