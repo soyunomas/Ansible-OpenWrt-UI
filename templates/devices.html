@@ -12,10 +12,9 @@
   .card .card-footer { font-size: 0.9rem; color: #6c757d; border-top: 1px solid #eee; padding-top: 10px; margin-top: auto; }
   
   /* --- Estilos para la Lista de Información (en tarjetas) --- */
-  .info-list { font-size: 0.9rem; margin-bottom: 0; }
+  .info-list { font-size: 0.9rem; }
   .info-list dt { font-weight: bold; color: #0d6efd; font-size: 0.75rem; text-transform: uppercase; margin-top: 0.5rem; }
   .info-list dd { font-weight: 500; margin-left: 0; margin-bottom: 0.8rem; word-wrap: break-word; }
-  .radio-badge { font-size: 0.8rem; }
 
   /* --- Iconos y Estados --- */
   .status-icon { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; display: inline-block; flex-shrink: 0;}
@@ -25,7 +24,7 @@
   #refresh-button { margin-bottom: 20px; }
   .info-button { position: absolute; top: 10px; right: 10px; cursor: pointer; font-size: 1.2rem; }
   
-  /* --- Estilos para el Modal --- */
+  /* --- Estilos para el Modal Compacto y Responsivo --- */
   .modal-body .info-block { margin-bottom: 0.5rem; }
   .modal-body .info-block .label { font-size: 0.8rem; color: #6c757d; display: block; margin-bottom: -2px; }
   .modal-body .info-block .value { font-size: 0.95rem; font-weight: 600; word-wrap: break-word; display: flex; align-items: center; }
@@ -44,10 +43,63 @@
 
 <div id="cards-container" class="cards-container"></div>
 
-<!-- Modals (Sin cambios aquí) -->
-<div class="modal fade" id="infoModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="infoModalLabel">Detalles</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
-<div class="modal fade" id="errorModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header bg-danger text-white"><h5 class="modal-title" id="errorModalLabel">Error</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Falló la ejecución. Salida completa:</p><pre class="output-console" id="error-output-content"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
-<div class="modal fade" id="trustHostModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-warning"><h5 class="modal-title" id="trustHostModalLabel">Verificación Requerida</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Conexión no segura con <strong id="trust-host-name"></strong>.</p><p>Confirma que confías en esta huella SSH:</p><pre class="output-console" id="trust-host-fingerprint"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-warning" id="confirm-trust-button">Confiar</button></div></div></div></div>
+<!-- Modal para Detalles del Dispositivo -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoModalLabel">Detalles del Dispositivo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para mostrar el error de Ansible -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="errorModalLabel"><i class="bi bi-bug-fill me-2"></i>Detalles del Error de Ejecución</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <p>La ejecución de Ansible para este dispositivo falló. Esta es la salida completa para ayudar a depurar el problema:</p>
+          <pre class="output-console" id="error-output-content" style="max-height: 60vh;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Confirmación de Clave SSH -->
+<div class="modal fade" id="trustHostModal" tabindex="-1" aria-labelledby="trustHostModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning">
+        <h5 class="modal-title" id="trustHostModalLabel"><i class="bi bi-shield-lock-fill me-2"></i>Verificación de Host Requerida</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>No se puede establecer una conexión segura con el host <strong id="trust-host-name"></strong>.</p>
+        <p>Esto es normal la primera vez que te conectas o si la IP del dispositivo ha cambiado.</p>
+        <p>Para continuar, confirma que confías en la siguiente huella digital SSH:</p>
+        <pre class="output-console" id="trust-host-fingerprint" style="color: #ffc107;"></pre>
+        <p class="text-danger mt-3"><strong>Advertencia:</strong> Solo acepta si reconoces esta huella o estás seguro de que el host es legítimo.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-warning" id="confirm-trust-button">Confiar y Conectar</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -55,21 +107,20 @@
 document.addEventListener('DOMContentLoaded', function() {
     const container = document.getElementById('cards-container');
     const refreshButton = document.getElementById('refresh-button');
-    // ... (resto de referencias a modals sin cambios)
+    const infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    const trustHostModal = new bootstrap.Modal(document.getElementById('trustHostModal'));
+    const modalBody = infoModal._element.querySelector('.modal-body');
+    const modalTitle = infoModal._element.querySelector('.modal-title');
 
     function escapeHTML(str) {
-        return str ? String(str).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]) : '';
-    }
-
-    /**
-     * Devuelve el estándar 802.11 correspondiente a una generación de Wi-Fi.
-     */
-    function getWifiStandard(gen) {
-        const standards = {
-            'Wi-Fi 7': '802.11be', 'Wi-Fi 6': '802.11ax', 'Wi-Fi 5': '802.11ac',
-            'Wi-Fi 4': '802.11n',  'Wi-Fi 3': '802.11g',  'Wi-Fi 2': '802.11a', 'Legacy': '802.11b'
-        };
-        return standards[gen] || '';
+        if (str === null || str === undefined) return '';
+        return str.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     const createDeviceCard = (deviceName) => {
@@ -101,81 +152,241 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const updateCardStatus = async (deviceName) => {
         const card = document.getElementById(`card-${deviceName}`);
-        // ... (resto de la función igual hasta la sección de 'online')
+        const statusIcon = document.getElementById(`status-icon-${deviceName}`);
+
         try {
             const response = await fetch(`/api/status/${deviceName}`);
             const data = await response.json();
-            if (!response.ok) throw new Error(JSON.stringify(data));
+            
+            if (!response.ok && response.status !== 500) {
+                 throw new Error(JSON.stringify(data));
+            }
+            if (response.status >= 500) {
+                 throw new Error(JSON.stringify({error: "Error interno del servidor.", ...data}));
+            }
 
-            const statusIcon = card.querySelector(`#status-icon-${deviceName}`);
-            statusIcon.className = 'status-icon';
-            card.classList.remove('status-offline', 'status-untrusted', 'status-online');
+            statusIcon.classList.remove('pending', 'offline', 'online');
+            card.classList.remove('status-offline', 'status-online', 'status-untrusted');
             
             card.querySelector('.card-body').innerHTML = `
                 <dl class="info-list">
-                    <dt>Hostname</dt> <dd id="hostname-${deviceName}">...</dd>
-                    <dt>Modelo</dt> <dd id="model-${deviceName}">...</dd>
-                    <dt>Firmware</dt> <dd id="firmware-short-${deviceName}">...</dd>
-                </dl>`;
-            
+                    <dt>Hostname</dt>
+                    <dd id="hostname-${deviceName}">Cargando...</dd>
+                    <dt>Modelo</dt>
+                    <dd id="model-${deviceName}">Cargando...</dd>
+                    <dt>Firmware</dt>
+                    <dd id="firmware-short-${deviceName}">Cargando...</dd>
+                </dl>
+            `;
+
             if (data.status === 'online') {
-                statusIcon.classList.add('online');
                 card.classList.add('status-online');
-                card.querySelector('.info-button').style.display = 'block';
-                card.querySelector('.info-button').dataset.deviceData = JSON.stringify(data);
+                statusIcon.classList.add('online');
                 
-                card.querySelector(`#hostname-${deviceName}`).textContent = data.hostname || 'N/A';
-                card.querySelector(`#model-${deviceName}`).textContent = data.model || 'N/A';
-                card.querySelector(`#firmware-short-${deviceName}`).textContent = data.firmware ? (data.firmware.match(/^(.*?)\s*r\d+/)?.[1].trim() || data.firmware) : 'N/A';
-                card.querySelector(`#ip-${deviceName}`).textContent = data.interfaces?.[0]?.ip || 'N/A';
+                const infoButton = card.querySelector('.info-button');
+                infoButton.style.display = 'block';
+                infoButton.dataset.deviceData = JSON.stringify(data);
 
-                // --- INICIO DE LA MODIFICACIÓN ---
-                let radioHtml = '<span class="text-muted small">No radios</span>';
-                if (data.radios && data.radios.length > 0) {
-                    radioHtml = data.radios.map(r => {
-                        const standard = getWifiStandard(r.generation);
-                        // Formato: "radio0 (802.11n - Wi-Fi 4)"
-                        const displayText = standard ? 
-                            `${escapeHTML(r.name)} (${escapeHTML(standard)} - ${escapeHTML(r.generation)})` : 
-                            `${escapeHTML(r.name)} (${escapeHTML(r.generation)})`;
-                        return `<div class="radio-badge">${displayText}</div>`;
-                    }).join('');
+                document.getElementById(`hostname-${deviceName}`).textContent = data.hostname || 'N/A';
+                document.getElementById(`model-${deviceName}`).textContent = data.model || 'N/A';
+                
+                const displayIp = (data.interfaces && data.interfaces.length > 0) ? data.interfaces[0].ip : 'N/A';
+                document.getElementById(`ip-${deviceName}`).textContent = displayIp;
+                
+                let shortFirmware = 'N/A';
+                if (data.firmware) {
+                    const match = data.firmware.match(/^(.*?)\s*r\d+/);
+                    shortFirmware = match ? match[1].trim() : data.firmware;
                 }
-                
-                card.querySelector('.card-body dl.info-list').innerHTML += `
-                    <dt>WIFI</dt>
-                    <dd>${radioHtml}</dd>
-                `;
-                // --- FIN DE LA MODIFICACIÓN ---
+                document.getElementById(`firmware-short-${deviceName}`).textContent = shortFirmware;
 
-            } else if (data.status === 'untrusted_host') {
-                // ... (lógica de untrusted_host sin cambios)
-            } else {
-                throw new Error(JSON.stringify(data));
+            } 
+            else if (data.status === 'untrusted_host') {
+                card.classList.add('status-untrusted');
+                statusIcon.classList.add('offline');
+                card.querySelector('.card-body').innerHTML = `
+                    <p class="text-warning fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Verificación requerida</p>
+                    <p>La clave SSH del host ha cambiado.</p>
+                    <button class="btn btn-sm btn-warning trust-button">
+                        <i class="bi bi-shield-check"></i> Confiar en este Host
+                    </button>
+                `;
+                const trustButton = card.querySelector('.trust-button');
+                trustButton.dataset.deviceName = data.inventory_name;
+                trustButton.dataset.hostname = data.hostname;
+                trustButton.dataset.fingerprint = data.fingerprint;
+                trustButton.dataset.rawKey = data.raw_key;
             }
+            else {
+                 throw new Error(JSON.stringify(data));
+            } 
         } catch (error) {
-            // ... (lógica de error sin cambios)
+            card.classList.add('status-offline');
+            statusIcon.classList.remove('pending', 'online');
+            statusIcon.classList.add('offline');
+            
+            const errorData = JSON.parse(error.message || '{}');
+            const displayMessage = errorData.error || error.message || "Error desconocido";
+
+            card.querySelector('.card-body').innerHTML = `<p class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>${escapeHTML(displayMessage)}</p>`;
+            document.getElementById(`ip-${deviceName}`).textContent = 'Error';
+
+            const errorButton = card.querySelector('.error-button');
+            if (errorData.ansible_stdout || errorData.ansible_stderr) {
+                errorButton.style.display = 'block';
+                const fullErrorOutput = `STDOUT:\n${errorData.ansible_stdout || '(vacío)'}\n\nSTDERR:\n${errorData.ansible_stderr || '(vacío)'}`;
+                errorButton.dataset.errorOutput = fullErrorOutput;
+            }
         }
     };
 
-    // El resto de las funciones JS (showModal, showErrorModal, etc.) no necesitan cambios.
-    // Asegúrate de que estén presentes como en las versiones anteriores.
-    // ...
+    const showModal = (e) => {
+        const infoButton = e.target.closest('.info-button');
+        if (!infoButton) return;
+        
+        const deviceName = infoButton.dataset.deviceName;
+        const data = JSON.parse(infoButton.dataset.deviceData);
+
+        modalTitle.textContent = `Detalles de ${escapeHTML(data.hostname || deviceName)}`;
+        
+        let interfacesHtml = '';
+        if (data.interfaces && data.interfaces.length > 0) {
+            data.interfaces.forEach(iface => {
+                let iconClass = 'bi-ethernet';
+                if (iface.name.includes('br-lan')) iconClass = 'bi-router';
+                if (iface.name.includes('wan') || iface.name.includes('eth0')) iconClass = 'bi-globe';
+                if (iface.name.includes('wlan')) iconClass = 'bi-wifi';
+
+                interfacesHtml += `
+                    <div class="col-md-6">
+                        <div class="info-block">
+                            <span class="label">Interfaz: ${escapeHTML(iface.name)}</span>
+                            <span class="value"><i class="bi ${iconClass}"></i>${escapeHTML(iface.ip)}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            interfacesHtml = '<div class="col-12"><div class="info-block"><span class="value">No se encontraron interfaces con IP.</span></div></div>';
+        }
+
+        modalBody.innerHTML = `
+            <h5><i class="bi bi-pc-display-horizontal me-2"></i>Sistema</h5>
+            <div class="row g-3">
+                <div class="col-md-6"><div class="info-block"><span class="label">Modelo</span><span class="value"><i class="bi bi-cpu"></i>${escapeHTML(data.model) || 'N/A'}</span></div></div>
+                <div class="col-md-6"><div class="info-block"><span class="label">Hostname</span><span class="value"><i class="bi bi-card-heading"></i>${escapeHTML(data.hostname) || 'N/A'}</span></div></div>
+                <div class="col-md-6"><div class="info-block"><span class="label">Firmware</span><span class="value"><i class="bi bi-motherboard"></i>${escapeHTML(data.firmware) || 'N/A'}</span></div></div>
+                <div class="col-md-6"><div class="info-block"><span class="label">Kernel</span><span class="value"><i class="bi bi-ubuntu"></i>${escapeHTML(data.kernel_version) || 'N/A'}</span></div></div>
+            </div>
+            <h5 class="mt-4"><i class="bi bi-diagram-3-fill me-2"></i>Interfaces de Red</h5>
+            <div class="row g-3">
+                ${interfacesHtml}
+                <div class="col-md-6">
+                    <div class="info-block">
+                        <span class="label">Gateway por defecto</span>
+                        <span class="value"><i class="bi bi-signpost-split"></i>${escapeHTML(data.gateway) || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+            <h5 class="mt-4"><i class="bi bi-activity me-2"></i>Estado</h5>
+             <div class="row g-3">
+                <div class="col-md-4"><div class="info-block"><span class="label">Uptime</span><span class="value"><i class="bi bi-clock-history"></i>${escapeHTML(data.uptime) || 'N/A'}</span></div></div>
+                <div class="col-md-4"><div class="info-block"><span class="label">Uso Memoria</span><span class="value"><i class="bi bi-memory"></i>${escapeHTML(data.mem_free) || 'N/A'} libres</span></div></div>
+                <div class="col-md-4"><div class="info-block"><span class="label">Uso Disco</span><span class="value"><i class="bi bi-device-hdd"></i>${escapeHTML(data.diskusage) || 'N/A'}</span></div></div>
+            </div>
+            <h5 class="mt-4"><i class="bi bi-terminal-fill me-2"></i>Log del Sistema (últimas líneas)</h5>
+            <div class="dmesg-log">${data.dmesg ? escapeHTML(data.dmesg).replace(/\|/g, '<br>') : 'N/A'}</div>
+        `;
+        infoModal.show();
+    };
+    
+    const showErrorModal = (e) => {
+        const button = e.target.closest('.error-button');
+        if (!button) return;
+
+        const deviceName = button.dataset.deviceName;
+        const errorOutput = button.dataset.errorOutput;
+
+        document.getElementById('errorModalLabel').textContent = `Detalles del Error en ${deviceName}`;
+        document.getElementById('error-output-content').textContent = errorOutput;
+        errorModal.show();
+    };
+
+    const handleTrustButtonClick = (e) => {
+        const button = e.target.closest('.trust-button');
+        if (!button) return;
+
+        document.getElementById('trust-host-name').textContent = button.dataset.hostname;
+        document.getElementById('trust-host-fingerprint').textContent = button.dataset.fingerprint;
+        
+        const confirmButton = document.getElementById('confirm-trust-button');
+        confirmButton.dataset.rawKey = button.dataset.rawKey;
+        confirmButton.dataset.deviceName = button.dataset.deviceName;
+
+        trustHostModal.show();
+    };
+
+    const handleConfirmTrust = async (e) => {
+        const button = e.currentTarget;
+        const rawKey = button.dataset.rawKey;
+        const deviceName = button.dataset.deviceName;
+
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+            const response = await fetch('/api/trust_host', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({ raw_key: rawKey })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'El servidor no pudo guardar la clave.');
+            }
+            trustHostModal.hide();
+            const card = document.getElementById(`card-${deviceName}`);
+            card.classList.remove('status-untrusted');
+            card.innerHTML = createDeviceCard(deviceName).innerHTML;
+            updateCardStatus(deviceName);
+
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            button.disabled = false;
+            button.innerHTML = 'Confiar y Conectar';
+        }
+    };
+
     const loadAllDevices = async () => {
-        container.innerHTML = '<div class="spinner-border text-primary" role="status"></div>';
+        container.innerHTML = '';
         try {
             const response = await fetch('/api/devices');
             const deviceNames = await response.json();
-            container.innerHTML = '';
-            if (!deviceNames.length) { container.innerHTML = '<p>No hay dispositivos.</p>'; return; }
+            if (deviceNames.length === 0) {
+                container.innerHTML = '<p>No se encontraron dispositivos en el inventario.</p>';
+                return;
+            }
             deviceNames.forEach(name => container.appendChild(createDeviceCard(name)));
             deviceNames.forEach(name => updateCardStatus(name));
         } catch (error) {
-            container.innerHTML = '<p class="text-danger">Error al cargar dispositivos.</p>';
+            container.innerHTML = '<p>Error al cargar la lista de dispositivos.</p>';
         }
     };
+
     refreshButton.addEventListener('click', loadAllDevices);
-    // ... (event listeners)
+    container.addEventListener('click', (e) => {
+        showModal(e);
+        showErrorModal(e);
+        handleTrustButtonClick(e);
+    });
+    document.getElementById('confirm-trust-button').addEventListener('click', handleConfirmTrust);
+
     loadAllDevices();
 });
 </script>
