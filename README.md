@@ -1,77 +1,72 @@
-
 # Ansible-OpenWrt-UI
 
-![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)![Ansible](https://img.shields.io/badge/Ansible-2.9+-red.svg)![Flask](https://img.shields.io/badge/Flask-2.0+-lightgrey.svg)![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Python](https://img.shields.io/badge/Python-3.7+-blue.svg) ![Ansible](https://img.shields.io/badge/Ansible-2.9+-red.svg) ![Flask](https://img.shields.io/badge/Flask-2.0+-lightgrey.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-Panel de control web para gestionar y automatizar routers OpenWrt a través de playbooks de Ansible.
+Panel de control web **seguro** para gestionar, monitorizar y automatizar routers OpenWrt a través de playbooks de Ansible, con una interfaz gráfica intuitiva.
 
 ## ✨ Características
 
-*   **Dashboard Visual:** Monitoriza el estado (online/offline) de todos tus routers de un vistazo.
-*   **Información Detallada:** Obtén datos clave de cada dispositivo: hostname, modelo, firmware, IP, uptime, uso de memoria, clientes WiFi y más.
-*   **Biblioteca de Playbooks:** Ejecuta tareas predefinidas (ver/aplicar actualizaciones, reiniciar servicios, etc.) desde una interfaz amigable.
+*   **Gestión Segura con Autenticación:** Acceso protegido por usuario y contraseña, con posibilidad de cambiar la contraseña y protección contra ataques CSRF.
+*   **Dashboard Visual:** Monitoriza el estado (online/offline/host no confiable) de todos tus routers de un vistazo.
+*   **Información Detallada:** Obtén datos clave de cada dispositivo: hostname, modelo, firmware, IP, uptime, uso de memoria, configuración WiFi y más, todo en un modal interactivo.
+*   **Acciones en Lote:** Aplica cambios a múltiples dispositivos simultáneamente desde una interfaz centralizada. ¡Configura IPs, redes WiFi, cambia la contraseña de root o reinicia routers en masa!
+*   **Biblioteca de Playbooks:** Ejecuta tareas predefinidas (ver actualizaciones, listar clientes WiFi, etc.) desde una interfaz amigable.
 *   **Ejecución Personalizada:** Sube tus propios playbooks de Ansible y ejecútalos contra un router específico o contra todos.
+*   **Gestión de Claves SSH:** La primera vez que te conectas a un router, la interfaz te ayuda a verificar y aceptar su huella digital (fingerprint) de forma segura.
 *   **Sin Terminal:** Realiza operaciones comunes sin necesidad de acceder por SSH a cada dispositivo.
 
 ## 🛠️ Tecnologías Utilizadas
 
-*   **Backend:** Python 3, Flask
+*   **Backend:** Python 3, Flask, Flask-Login (autenticación), Flask-WTF (seguridad y CSRF)
 *   **Automatización:** Ansible
 *   **Frontend:** HTML, CSS, JavaScript, Bootstrap 5
-  
+
 ## 🧠 Filosofía de Diseño: Mínima Huella en el Router
 
-Este panel está diseñado con una premisa fundamental: **no modificar el sistema base de OpenWrt**. Los routers suelen tener un espacio de almacenamiento muy limitado, por lo que instalar un intérprete de Python y las librerías necesarias para que los módulos estándar de Ansible funcionen no es una opción viable ni deseable.
+Este panel está diseñado con una premisa fundamental: **no modificar el sistema base de OpenWrt**. Los routers suelen tener un espacio de almacenamiento muy limitado, por lo que instalar un intérprete de Python no es una opción viable.
 
-Para lograrlo, toda la comunicación y ejecución de tareas se basa en una estrategia que aprovecha al máximo lo que un sistema OpenWrt ya tiene por defecto: un servidor SSH y un conjunto de herramientas de línea de comandos (como `awk`, `grep`, `sed`, `uci`, etc.).
+Toda la comunicación y ejecución de tareas se basa en aprovechar lo que un sistema OpenWrt ya tiene: un servidor SSH y herramientas de línea de comandos (`uci`, `awk`, `grep`, `sed`, etc.).
 
 Esto se consigue aplicando los siguientes principios en todos los playbooks:
 
-1.  **Desactivación de la Recolección de Hechos:** En cada playbook, se especifica `gather_facts: false`. Este paso es crucial, ya que la recolección de hechos (`facts`) es el proceso por el cual Ansible intenta ejecutar un script de Python en el nodo remoto para obtener información del sistema. Al desactivarlo, evitamos el primer requisito de Python.
-
-2.  **Uso Exclusivo del Módulo `ansible.builtin.raw`:** En lugar de módulos como `ansible.builtin.command` o `ansible.builtin.shell` (que también tienen ciertas dependencias), utilizamos `raw`. Este módulo hace lo mínimo indispensable: abre una conexión SSH y ejecuta el comando que le pasamos, devolviendo la salida en crudo. Es la forma más pura de ejecutar un comando remoto, compatible con cualquier dispositivo que tenga un servidor SSH.
-
-3.  **Formato de Salida predecible:** Como se puede ver en el playbook `A_get_device_details.yml`, la lógica no reside en Ansible, sino en el propio comando shell que se ejecuta. Los datos se formatean con un separador simple (ej: `HOSTNAME::router-principal`) para que la aplicación Flask pueda parsear la salida de texto fácilmente sin depender de formatos complejos como JSON, que serían más difíciles de generar con comandos de shell básicos.
+1.  **Desactivación de la Recolección de Hechos (`gather_facts: false`):** Se evita el intento de Ansible de ejecutar scripts de Python en el router.
+2.  **Uso Exclusivo del Módulo `ansible.builtin.raw`:** Se envían comandos de shell puros a través de SSH, garantizando la máxima compatibilidad con cualquier dispositivo con SSH.
+3.  **Formato de Salida predecible:** Los scripts en los playbooks formatean la salida con un separador simple (ej: `HOSTNAME::router-principal`) para que la aplicación Flask pueda parsearla fácilmente sin depender de JSON.
 
 #### Ventajas de este enfoque:
 
-*   **Zero-Dependency en el Router:** No necesitas instalar `python`, `scp`, `sftp` ni ningún otro paquete en tus dispositivos OpenWrt. Funciona con una instalación por defecto.
-*   **Universalidad:** Es compatible con casi cualquier versión de OpenWrt y otros sistemas embebidos que solo ofrezcan acceso SSH.
+*   **Zero-Dependency en el Router:** No necesitas instalar `python` ni ningún otro paquete en tus dispositivos OpenWrt.
+*   **Universalidad:** Compatible con casi cualquier versión de OpenWrt y otros sistemas embebidos.
 *   **Ligereza:** El impacto en el rendimiento y almacenamiento del router es prácticamente nulo.
-*   **Seguridad:** No se añaden nuevos servicios ni intérpretes al router, reduciendo la superficie de ataque.
+*   **Seguridad:** No se añaden nuevos servicios al router, reduciendo la superficie de ataque.
 
 #### Limitaciones a tener en cuenta:
 
-*   **Idempotencia Manual:** El módulo `raw` no es idempotente por naturaleza. A diferencia de los módulos de Ansible (ej: `user`, `copy`), que comprueban el estado antes de realizar una acción, un comando `raw` se ejecutará siempre. La lógica para comprobar si un cambio es necesario debe ser implementada manualmente en el script del propio playbook.
-*   **Complejidad en los Playbooks:** Tareas complejas requieren scripts de shell más elaborados, que pueden ser más difíciles de escribir y depurar que un playbook de Ansible estándar.
-*   **Fragilidad del "Parseo":** La interfaz gráfica depende de que los comandos devuelvan la información en el formato esperado. Un cambio en la salida de un comando en una futura versión de OpenWrt podría romper la visualización de ese dato hasta que se adapte el playbook.
+*   **Idempotencia Manual:** El módulo `raw` no es idempotente. La lógica para comprobar si un cambio es necesario debe implementarse manualmente en el script del playbook.
+*   **Complejidad en los Playbooks:** Tareas complejas requieren scripts de shell más elaborados.
+*   **Fragilidad del "Parseo":** La UI depende de que los comandos devuelvan la información en el formato esperado. Un cambio en una futura versión de OpenWrt podría romper la visualización.
 
-
-## 🚀 Instalación y Configuración
+## 🚀 Instalación y Puesta en Marcha
 
 Sigue estos pasos para poner en marcha el panel de control en tu máquina local.
 
-### 1. Prerrequisitos
+### Paso 1: Prerrequisitos
 
 Asegúrate de tener instalado lo siguiente en tu sistema:
-
 *   **Python 3** (versión 3.7 o superior)
 *   **Ansible** (versión 2.9 o superior)
 *   **Git**
 
-### 2. Clonar el Repositorio
-
-Abre una terminal y clona este repositorio:
+### Paso 2: Clonar el Repositorio
 
 ```bash
 git clone https://github.com/soyunomas/Ansible-OpenWrt-UI.git
 cd Ansible-OpenWrt-UI
 ```
 
-### 3. Instalar Dependencias de Python
+### Paso 3: Instalar Dependencias de Python
 
-El proyecto utiliza Flask. Es una buena práctica usar un entorno virtual.
-
+Es una buena práctica usar un entorno virtual.
 ```bash
 # Crear un entorno virtual (opcional pero recomendado)
 python3 -m venv venv
@@ -80,14 +75,11 @@ source venv/bin/activate  # En Windows: venv\Scripts\activate
 # Instalar las dependencias
 pip install -r requirements.txt
 ```
+> **Nota:** El archivo `requirements.txt` contiene Flask, Flask-Login, Flask-WTF y filelock.
 
-> **Nota:** El archivo `requirements.txt` solo contiene `Flask`. Si no lo tienes, créalo con esa única línea.
+### Paso 4: Configurar el Inventario de Routers (`hosts`)
 
-### 4. Configurar el Inventario de Routers (`hosts`)
-
-Este es el paso más importante. Debes decirle a Ansible cuáles son tus routers y cómo conectarse a ellos.
-
-Edita el archivo `ansible_project/hosts` y añade tus dispositivos siguiendo este formato:
+Este es un paso fundamental. Edita el archivo `ansible_project/hosts` y añade tus dispositivos siguiendo este formato:
 
 ```ini
 # ansible_project/hosts
@@ -99,44 +91,58 @@ Edita el archivo `ansible_project/hosts` y añade tus dispositivos siguiendo est
 
 router_principal      ansible_host=192.168.1.1   ansible_user=root ansible_ssh_pass=tu_password_seguro
 router_despacho       ansible_host=192.168.1.50  ansible_user=root ansible_ssh_pass=otra_password
-router_salon          ansible_host=192.168.1.51  ansible_user=root ansible_ssh_pass=password_salon
 ```
 
 **¡ADVERTENCIA DE SEGURIDAD!**
-Guardar contraseñas en texto plano es una mala práctica para entornos de producción. Para un uso más seguro, considera usar [claves SSH](https://docs.ansible.com/ansible/latest/user_guide/connection_details.html#setting-the-remote-user-and-password) o [Ansible Vault](https://docs.ansible.com/ansible/latest/user_guide/vault.html) para encriptar tus contraseñas.
+Guardar contraseñas en texto plano no es seguro. Para un uso más robusto, considera usar [claves SSH](https://docs.ansible.com/ansible/latest/user_guide/connection_details.html#setting-the-remote-user-and-password) o [Ansible Vault](https://docs.ansible.com/ansible/latest/user_guide/vault.html).
 
-## ▶️ Uso
+### Paso 5 (Crítico): Crear el Usuario Administrador
 
-Una vez completada la instalación y configuración, ejecuta la aplicación:
+Para asegurar la aplicación, primero debes crear una cuenta de administrador. Ejecuta el siguiente script y sigue las instrucciones:
+
+```bash
+python3 setup_admin.py
+```
+Se te pedirá un nombre de usuario y una contraseña, que usarás para acceder al panel.
+
+## ▶️ Ejecución y Acceso
+
+Una vez completada la instalación, ejecuta la aplicación:
 
 ```bash
 python3 app.py
 ```
 
-El servidor se iniciará y podrás acceder al panel desde tu navegador en:
+El servidor se iniciará. Accede al panel desde tu navegador en:
 
 **http://127.0.0.1:5000**
 
-¡Y ya está! Ahora deberías ver tus routers en el panel y podrás empezar a interactuar con ellos.
+Serás redirigido a la página de inicio de sesión. ¡Introduce las credenciales que creaste en el paso 5 y listo!
 
 ## 📁 Estructura del Proyecto
-
-Aquí tienes una descripción de los archivos y carpetas más importantes:
 
 ```
 Ansible-OpenWrt-UI/
 ├── ansible_project/
-│   └── hosts                # ¡CRÍTICO! Tu inventario de routers. Aquí defines tus dispositivos.
+│   └── hosts                # ¡CRÍTICO! Tu inventario de routers. ¡DEBES EDITAR ESTE ARCHIVO!
 ├── playbook_library/
-│   ├── A_get_device_details.yml # Playbook maestro para obtener todos los datos de un dispositivo.
-│   └── ...                      # Otros playbooks con tareas predefinidas.
+│   ├── A_get_device_details.yml # Playbook maestro para obtener los datos del dashboard.
+│   ├── action_*.yml         # Playbooks utilizados por la página "Acciones en Lote".
+│   └── ...                  # Otros playbooks para la ejecución manual.
 ├── templates/
-│   ├── devices.html         # Plantilla para la vista principal del dashboard.
+│   ├── devices.html         # Plantilla para el dashboard principal.
+│   ├── actions.html         # Plantilla para la página de acciones en lote.
 │   ├── execute.html         # Plantilla para la página de ejecución de playbooks.
+│   ├── login.html           # Página de inicio de sesión.
+│   ├── profile.html         # Página para cambiar la contraseña del usuario.
+│   ├── setup.html           # Página que se muestra si no se ha creado un usuario.
 │   └── layout.html          # Plantilla base con el menú y la estructura común.
-├── app.py                   # El cerebro de la aplicación. Contiene toda la lógica del backend en Flask.
-├── ansible.cfg              # Configuración local de Ansible para asegurar una salida consistente.
-└── requirements.txt         # Lista de dependencias de Python para el proyecto.
+├── app.py                   # El cerebro de la aplicación. Contiene la lógica del backend en Flask,
+│                            # incluyendo autenticación, seguridad CSRF y las rutas de la API.
+├── setup_admin.py           # Script para crear el primer usuario administrador.
+├── ansible.cfg              # Configuración local de Ansible.
+├── requirements.txt         # Lista de dependencias de Python para el proyecto.
+└── user.json                # Archivo que almacena los datos del usuario (no editar manualmente).
 ```
 
 ## 📄 Licencia
