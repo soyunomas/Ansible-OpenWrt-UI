@@ -5,59 +5,53 @@
 
   tasks:
     - name: Aplicar configuracion a cada radio especificada
-      # Este bucle iterará sobre la lista de 'radios' que le pasamos desde la app.
-      # Cada item en la lista es un diccionario con 'device', 'index', 'ssid', etc.
       loop: "{{ radios | default([]) }}"
       loop_control:
         loop_var: radio
-      # Usamos 'when' para asegurar que la tarea solo se ejecute en el host correcto
-      # para el que está destinada esta configuración de radio.
       when: radio.device == inventory_hostname
       ansible.builtin.raw: |
         #!/bin/sh
         # ==============================================================================
-        # == Script para configurar una interfaz WiFi de forma segura              ==
+        # == Script para configurar una interfaz WiFi de forma segura (CORREGIDO)    ==
         # ==============================================================================
         
-        # Variables pasadas desde Ansible (con comillas simples defensivas)
-        IFACE_INDEX='{{ radio.index }}'
-        SSID='{{ radio.ssid }}'
-        ENCRYPTION='{{ radio.encryption }}'
-        KEY='{{ radio.key }}'
+        ### FIX: BUG FIX ###
+        # La variable 'radio.index' ahora contiene el NOMBRE de la sección (ej: 'default_radio0').
+        # La lógica se adapta para trabajar con secciones con nombre en lugar de índices numéricos.
+        SECTION_NAME='{{ radio.index }}'
         
-        # Comprobar si la interfaz wifi existe en la configuración.
-        # uci show wireless.@wifi-iface[$IFACE_INDEX] devolverá un error si no existe.
-        if ! uci show wireless | grep -q "@wifi-iface\[$IFACE_INDEX\]"; then
-          echo "ERROR: La interfaz WiFi con índice $IFACE_INDEX no existe en {{ inventory_hostname }}." >&2
+        # La comprobación de existencia ahora usa el nombre de la sección directamente.
+        if ! uci show "wireless.$SECTION_NAME" >/dev/null 2>&1; then
+          echo "ERROR: La sección WiFi con nombre '$SECTION_NAME' no existe en {{ inventory_hostname }}." >&2
           exit 1
         fi
 
-        echo "Configurando interfaz @wifi-iface[$IFACE_INDEX] en {{ inventory_hostname }}..."
+        echo "Configurando sección '$SECTION_NAME' en {{ inventory_hostname }}..."
         
-        # Aplicar la nueva configuración
-        uci set "wireless.@wifi-iface[$IFACE_INDEX].ssid=$SSID"
-        uci set "wireless.@wifi-iface[$IFACE_INDEX].encryption=$ENCRYPTION"
+        ### SECURITY FIX REMAINS ###
+        # Usamos el filtro 'quote' para escapar de forma segura las variables.
+        # Ahora se aplica la configuración a la sección con nombre 'wireless.SECTION_NAME'.
+        uci set "wireless.$SECTION_NAME.ssid={{ radio.ssid | quote }}"
+        uci set "wireless.$SECTION_NAME.encryption={{ radio.encryption | quote }}"
         
         # Solo establecer la clave si el cifrado no es 'none' (abierto)
-        if [ "$ENCRYPTION" != "none" ]; then
-          uci set "wireless.@wifi-iface[$IFACE_INDEX].key=$KEY"
+        if [ "{{ radio.encryption }}" != "none" ]; then
+          uci set "wireless.$SECTION_NAME.key={{ radio.key | quote }}"
         else
           # Si el cifrado es 'none', eliminamos la clave por seguridad.
-          uci delete "wireless.@wifi-iface[$IFACE_INDEX].key"
+          uci delete "wireless.$SECTION_NAME.key"
         fi
         
         # Guardar los cambios de la seccion 'wireless'
         uci commit wireless
         
-        echo "OK: Configuracion para SSID '$SSID' aplicada y guardada."
+        echo "OK: Configuracion para SSID {{ radio.ssid | quote }} aplicada y guardada en la sección '$SECTION_NAME'."
         exit 0
       register: uci_result
       changed_when: "'OK:' in uci_result.stdout"
       failed_when: uci_result.rc != 0
 
     - name: Reiniciar el servicio WiFi para aplicar todos los cambios
-      # Esta tarea se ejecuta una sola vez al final, después de que el bucle termine.
-      # 'wifi reload' es más rápido y menos disruptivo que reiniciar toda la red.
       ansible.builtin.raw: wifi reload
       register: reload_result
       changed_when: reload_result.rc == 0

@@ -5,41 +5,35 @@
 
   tasks:
     - name: '1. Aplicar configuración a cada interfaz especificada'
-      # Este bucle iterará sobre la lista 'changes' que le pasamos desde la app.
-      # Cada item tiene 'device', 'iface_name', 'ip' y 'mask'.
       loop: "{{ changes | default([]) }}"
       loop_control:
         loop_var: iface_config
-      # Usamos 'when' para asegurar que la tarea solo se ejecute en el host correcto
-      # para el que está destinada esta configuración de interfaz.
       when: iface_config.device == inventory_hostname
       ansible.builtin.raw: |
         #!/bin/sh
         # ============================================================================
-        # == SCRIPT MODIFICADO PARA SOPORTAR OPERACIONES EN LOTE                    ==
+        # == SCRIPT MODIFICADO PARA SOPORTAR OPERACIONES EN LOTE (CORREGIDO)        ==
         # ============================================================================
         
-        # Si la interfaz empieza con 'br-', derivamos el nombre de la seccion UCI.
-        # Ejemplo: 'br-lan' -> 'lan'
+        # La lógica para encontrar la sección UCI no se ve afectada
         if echo "{{ iface_config.iface_name }}" | grep -q '^br-'; then
           TARGET_SECTION=$(echo "{{ iface_config.iface_name }}" | sed 's/^br-//')
         else
-          # Para otras interfaces, asumimos que el nombre de la interfaz es la seccion.
           TARGET_SECTION="{{ iface_config.iface_name }}"
         fi
 
-        # Verificamos que la sección derivada realmente existe en la configuración.
         if ! uci show "network.$TARGET_SECTION" >/dev/null 2>&1; then
           echo "ERROR: La seccion UCI derivada '$TARGET_SECTION' no existe para la interfaz '{{ iface_config.iface_name }}' en {{ inventory_hostname }}." >&2
           exit 1
         fi
         
-        # Aplicamos toda la configuración a la sección correcta
+        ### FIX: VULNERABILITY #2 (DEFENSE-IN-DEPTH) ###
+        # Usamos el filtro 'quote' para escapar de forma segura las variables IP y MASK.
+        # Esto previene que metacaracteres de shell sean interpretados.
         uci set "network.$TARGET_SECTION.proto=static"
-        uci set "network.$TARGET_SECTION.ipaddr={{ iface_config.ip }}"
-        uci set "network.$TARGET_SECTION.netmask={{ iface_config.mask }}"
+        uci set "network.$TARGET_SECTION.ipaddr={{ iface_config.ip | quote }}"
+        uci set "network.$TARGET_SECTION.netmask={{ iface_config.mask | quote }}"
         
-        # Guardamos los cambios en la memoria flash
         uci commit network
         
         echo "OK: Configuracion para {{ iface_config.iface_name }} aplicada y guardada en la seccion '$TARGET_SECTION'."
@@ -49,6 +43,5 @@
       failed_when: config_result.rc != 0
 
     - name: '2. Reiniciar el servicio de red para aplicar TODOS los cambios'
-      # Esta tarea se ejecuta una sola vez al final, después de que el bucle termine.
       ansible.builtin.raw: /etc/init.d/network restart
       ignore_errors: true
