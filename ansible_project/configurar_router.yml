@@ -1,8 +1,0 @@
----
-- name: Probar conexión con el router
-  hosts: all
-  gather_facts: false # Muy importante dejarlo en false, ya que 'gather_facts' requiere Python
-
-  tasks:
-    - name: Enviar un ping (comando raw) al dispositivo
-      ansible.builtin.raw: ping -c 3 {{ ansible_host }}
